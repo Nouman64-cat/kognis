@@ -1,6 +1,7 @@
 from enum import StrEnum
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,6 +24,9 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-3-5-haiku-20241022"
+
+    # Split large exams into multiple LLM calls (each batch ≤ this many questions).
+    mcq_max_questions_per_batch: int = Field(default=20, ge=1, le=100)
 
     admin_api_key: str | None = None
 

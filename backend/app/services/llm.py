@@ -55,12 +55,39 @@ class _LLMExamPayload(BaseModel):
     questions: list[_LLMQuestion] = Field(min_length=1, max_length=100)
 
 
+def _split_counts_into_batches(full_counts: dict[str, int], max_batch: int) -> list[dict[str, int]]:
+    """Split global per-category counts into batches of at most `max_batch` questions, preserving totals."""
+    if max_batch < 1:
+        raise ValueError("max_batch must be at least 1")
+    slots: list[str] = []
+    for name, cnt in full_counts.items():
+        slots.extend([name] * cnt)
+    if not slots:
+        return []
+    batches: list[dict[str, int]] = []
+    for i in range(0, len(slots), max_batch):
+        chunk = slots[i : i + max_batch]
+        batches.append(dict(Counter(chunk)))
+    return batches
+
+
 def _build_user_prompt(
     topics: list[str],
     complexity: str,
     total_questions: int,
     expected_counts: dict[str, int],
+    *,
+    batch_index: int | None = None,
+    num_batches: int | None = None,
 ) -> str:
+    prefix = ""
+    if num_batches is not None and num_batches > 1 and batch_index is not None:
+        prefix = (
+            f"This is batch {batch_index + 1} of {num_batches} for the SAME exam. "
+            f"Generate exactly {total_questions} questions in THIS batch only; other batches cover the remainder. "
+            "Use distinct stems so this batch does not overlap conceptually with what other batches would contain.\n\n"
+        )
+
     topics_str = ", ".join(repr(t) for t in topics)
     topic_clause = (
         f"covering the topic: {topics_str}" if len(topics) == 1
@@ -79,7 +106,8 @@ def _build_user_prompt(
     mix_section = "\n".join(mix_lines) if mix_lines else "(No category breakdown — use general mix.)"
 
     return (
-        f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
+        prefix
+        + f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
         f"Target difficulty/complexity: {complexity!r}. "
         "Each question must have exactly four options as plain strings, one correct answer identified by "
         "correct_index 0-3 matching the position in options, a concise 1-sentence explanation, "
@@ -114,17 +142,28 @@ def _validate_category_counts(payload: _LLMExamPayload, expected: dict[str, int]
             raise RuntimeError(f"Unexpected category {key!r} (not in the requested mix)")
 
 
-async def generate_mcq_payload(
+async def _generate_mcq_payload_attempt(
     settings: Settings,
     *,
     topics: list[str],
     complexity: str,
-    total_questions: int,
-    topic_mix: list[TopicMixEntry],
+    expected_counts: dict[str, int],
+    batch_index: int | None,
+    num_batches: int | None,
 ) -> _LLMExamPayload:
-    expected_counts = allocate_question_counts(topic_mix, total_questions)
-    base_prompt = _build_user_prompt(topics, complexity, total_questions, expected_counts)
-    allowed = list(expected_counts.keys())
+    total_questions = sum(expected_counts.values())
+    if total_questions < 1:
+        raise RuntimeError("batch has no questions")
+    allowed = [k for k, v in expected_counts.items() if v > 0]
+
+    base_prompt = _build_user_prompt(
+        topics,
+        complexity,
+        total_questions,
+        expected_counts,
+        batch_index=batch_index,
+        num_batches=num_batches,
+    )
 
     correction: str | None = None
     last_err: str | None = None
@@ -159,6 +198,41 @@ async def generate_mcq_payload(
             correction = last_err
 
     raise RuntimeError(last_err or "MCQ generation failed")
+
+
+async def generate_mcq_payload(
+    settings: Settings,
+    *,
+    topics: list[str],
+    complexity: str,
+    total_questions: int,
+    topic_mix: list[TopicMixEntry],
+) -> _LLMExamPayload:
+    full_expected = allocate_question_counts(topic_mix, total_questions)
+    max_batch = max(1, settings.mcq_max_questions_per_batch)
+    batch_specs = _split_counts_into_batches(full_expected, max_batch)
+
+    merged: list[_LLMQuestion] = []
+    num_batches = len(batch_specs)
+    for bi, batch_counts in enumerate(batch_specs):
+        batch_index = bi if num_batches > 1 else None
+        nb = num_batches if num_batches > 1 else None
+        part = await _generate_mcq_payload_attempt(
+            settings,
+            topics=topics,
+            complexity=complexity,
+            expected_counts=batch_counts,
+            batch_index=batch_index,
+            num_batches=nb,
+        )
+        merged.extend(part.questions)
+
+    if len(merged) != total_questions:
+        raise RuntimeError(f"Internal merge error: expected {total_questions} questions, got {len(merged)}")
+
+    out = _LLMExamPayload(questions=merged)
+    _validate_category_counts(out, full_expected)
+    return out
 
 
 def _dynamic_exam_payload_model(total_questions: int) -> type[BaseModel]:
@@ -271,7 +345,6 @@ async def _generate_anthropic(
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     tool = _anthropic_tool_def(allowed_categories, total_questions)
-    # Use max output tokens to reduce truncation (common cause of N-1 questions).
     message = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=_ANTHROPIC_MAX_OUT,
