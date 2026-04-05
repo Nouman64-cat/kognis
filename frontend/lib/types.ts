@@ -66,6 +66,28 @@ export type AttemptRow = {
   duration_minutes: number | null;
 };
 
+export type GlobalAnalytics = {
+  unique_candidates: number;
+  total_attempts: number;
+  avg_score: number;
+  top_score: number;
+  pass_rate: number;
+  score_distribution: Record<string, number>;
+};
+
+export type CandidateAnalytics = {
+  candidate_email: string;
+  candidate_name: string;
+  total_attempts: number;
+  avg_score: number;
+  best_score: number;
+  pass_rate: number;
+  passed_count: number;
+  failed_count: number;
+};
+
 export type ListAttemptsResponse = {
   attempts: AttemptRow[];
+  global_stats: GlobalAnalytics;
+  candidate_stats: Record<string, CandidateAnalytics>;
 };

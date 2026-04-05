@@ -117,5 +117,27 @@ class AttemptRow(BaseModel):
     duration_minutes: int | None
 
 
+class GlobalAnalytics(BaseModel):
+    unique_candidates: int
+    total_attempts: int
+    avg_score: float
+    top_score: float
+    pass_rate: float
+    score_distribution: dict[str, int]
+
+
+class CandidateAnalytics(BaseModel):
+    candidate_email: str
+    candidate_name: str
+    total_attempts: int
+    avg_score: float
+    best_score: float
+    pass_rate: float
+    passed_count: int
+    failed_count: int
+
+
 class ListAttemptsResponse(BaseModel):
     attempts: list[AttemptRow]
+    global_stats: GlobalAnalytics
+    candidate_stats: dict[str, CandidateAnalytics]

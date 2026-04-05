@@ -10,6 +10,8 @@ from app.schemas import (
     AdminGenerateExamRequest,
     AdminGenerateExamResponse,
     AttemptRow,
+    CandidateAnalytics,
+    GlobalAnalytics,
     ListAttemptsResponse,
 )
 from app.services.llm import generate_mcq_payload
@@ -123,4 +125,43 @@ async def list_attempts(
                 duration_minutes=a.exam.duration_minutes,
             )
         )
-    return ListAttemptsResponse(attempts=attempts)
+    PASS_THRESHOLD_PERCENT = 60.0
+
+    global_stats = GlobalAnalytics(
+        unique_candidates=len(set(a.candidate_email for a in attempts)),
+        total_attempts=len(attempts),
+        avg_score=sum(a.score_percent for a in attempts) / len(attempts) if attempts else 0.0,
+        top_score=max((a.score_percent for a in attempts), default=0.0),
+        pass_rate=(sum(1 for a in attempts if a.score_percent >= PASS_THRESHOLD_PERCENT) / len(attempts) * 100) if attempts else 0.0,
+        score_distribution={
+            "0–20": sum(1 for a in attempts if 0 <= a.score_percent <= 20),
+            "21–40": sum(1 for a in attempts if 20 < a.score_percent <= 40),
+            "41–60": sum(1 for a in attempts if 40 < a.score_percent <= 60),
+            "61–80": sum(1 for a in attempts if 60 < a.score_percent <= 80),
+            "81–100": sum(1 for a in attempts if 80 < a.score_percent <= 100),
+        }
+    )
+
+    from collections import defaultdict
+    by_candidate = defaultdict(list)
+    for a in attempts:
+        by_candidate[a.candidate_email].append(a)
+
+    candidate_stats: dict[str, CandidateAnalytics] = {}
+    for email, group in by_candidate.items():
+        candidate_stats[email] = CandidateAnalytics(
+            candidate_email=email,
+            candidate_name=group[0].candidate_name,
+            total_attempts=len(group),
+            avg_score=sum(a.score_percent for a in group) / len(group) if group else 0.0,
+            best_score=max((a.score_percent for a in group), default=0.0),
+            pass_rate=(sum(1 for a in group if a.score_percent >= PASS_THRESHOLD_PERCENT) / len(group) * 100) if group else 0.0,
+            passed_count=sum(1 for a in group if a.score_percent >= PASS_THRESHOLD_PERCENT),
+            failed_count=sum(1 for a in group if a.score_percent < PASS_THRESHOLD_PERCENT),
+        )
+
+    return ListAttemptsResponse(
+        attempts=attempts,
+        global_stats=global_stats,
+        candidate_stats=candidate_stats,
+    )

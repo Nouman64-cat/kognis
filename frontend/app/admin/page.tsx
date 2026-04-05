@@ -24,7 +24,7 @@ import {
 import { clearAdminToken } from "@/lib/admin-token";
 import { generateExamAdmin, listAttempts, listExams } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
-import type { AttemptRow, ExamSummary } from "@/lib/types";
+import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics } from "@/lib/types";
 
 function scrollPageToSection(id: string) {
   const el = document.getElementById(id);
@@ -84,6 +84,8 @@ export default function AdminPage() {
     duration_minutes: number | null;
   } | null>(null);
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
+  const [globalStats, setGlobalStats] = useState<GlobalAnalytics | null>(null);
+  const [candidateStats, setCandidateStats] = useState<Record<string, CandidateAnalytics>>({});
   const [attemptsLoading, setAttemptsLoading] = useState(false);
   const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -130,9 +132,13 @@ export default function AdminPage() {
     try {
       const res = await listAttempts();
       setAttempts(res.attempts);
+      setGlobalStats(res.global_stats);
+      setCandidateStats(res.candidate_stats);
     } catch (e) {
       setAttemptsError(e instanceof Error ? e.message : "Could not load attempts");
       setAttempts([]);
+      setGlobalStats(null);
+      setCandidateStats({});
     } finally {
       setAttemptsLoading(false);
     }
@@ -770,28 +776,11 @@ export default function AdminPage() {
                 );
               });
 
-              // Aggregate stats
-              const uniqueEmails = [...new Set(attempts.map((a) => a.candidate_email))];
-              const totalAttempts = attempts.length;
-              const avgScore = totalAttempts ? attempts.reduce((s, a) => s + a.score_percent, 0) / totalAttempts : 0;
-              const topScore = totalAttempts ? Math.max(...attempts.map((a) => a.score_percent)) : 0;
-              const passCount = attempts.filter((a) => a.score_percent >= 60).length;
-              const passRate = totalAttempts ? (passCount / totalAttempts) * 100 : 0;
-
               // Per-candidate panel data
               const candidateAttempts = selectedCandidateEmail
                 ? attempts.filter((a) => a.candidate_email === selectedCandidateEmail)
                 : [];
-              const candidateName = candidateAttempts[0]?.candidate_name ?? "";
-              const candidateAvg = candidateAttempts.length
-                ? candidateAttempts.reduce((s, a) => s + a.score_percent, 0) / candidateAttempts.length
-                : 0;
-              const candidateBest = candidateAttempts.length
-                ? Math.max(...candidateAttempts.map((a) => a.score_percent))
-                : 0;
-              const candidatePassRate = candidateAttempts.length
-                ? (candidateAttempts.filter((a) => a.score_percent >= 60).length / candidateAttempts.length) * 100
-                : 0;
+              const cStats = selectedCandidateEmail ? candidateStats[selectedCandidateEmail] : null;
 
               // SVG ring helper
               const Ring = ({ pct, size = 96, stroke = 8 }: { pct: number; size?: number; stroke?: number }) => {
@@ -822,7 +811,7 @@ export default function AdminPage() {
                       {/* Header */}
                       <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
                         <div>
-                          <p className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{candidateName}</p>
+                          <p className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{cStats?.candidate_name || "Unknown"}</p>
                           <p className="text-sm text-zinc-500">{selectedCandidateEmail}</p>
                         </div>
                         <button type="button" onClick={() => setSelectedCandidateEmail(null)}
@@ -836,9 +825,9 @@ export default function AdminPage() {
                         {/* Big number stat cards */}
                         <div className="grid grid-cols-3 gap-4">
                           {[
-                            { label: "Avg. Score", value: `${candidateAvg.toFixed(1)}%`, sub: `${candidateAttempts.length} exam${candidateAttempts.length !== 1 ? "s" : ""}`, colour: "violet" },
-                            { label: "Best Score", value: `${candidateBest.toFixed(1)}%`, sub: "personal best", colour: "emerald" },
-                            { label: "Pass Rate", value: `${candidatePassRate.toFixed(0)}%`, sub: "≥60% threshold", colour: "amber" },
+                            { label: "Avg. Score", value: `${cStats?.avg_score.toFixed(1) || "0.0"}%`, sub: `${cStats?.total_attempts || 0} exam${cStats?.total_attempts !== 1 ? "s" : ""}`, colour: "violet" },
+                            { label: "Best Score", value: `${cStats?.best_score.toFixed(1) || "0.0"}%`, sub: "personal best", colour: "emerald" },
+                            { label: "Pass Rate", value: `${cStats?.pass_rate.toFixed(0) || "0"}%`, sub: "≥60% threshold", colour: "amber" },
                           ].map((card) => (
                             <div key={card.label} className="rounded-2xl border border-zinc-200/80 bg-zinc-50 p-4 dark:border-zinc-800/80 dark:bg-zinc-900/50">
                               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
@@ -855,21 +844,19 @@ export default function AdminPage() {
                         {/* Score ring + avg spotlight */}
                         <div className="flex items-center gap-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
                           <div className="relative shrink-0">
-                            <Ring pct={candidateAvg} size={100} stroke={9} />
+                            <Ring pct={cStats?.avg_score || 0} size={100} stroke={9} />
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="text-lg font-black tabular-nums text-zinc-900 dark:text-zinc-50">{candidateAvg.toFixed(0)}%</span>
+                              <span className="text-lg font-black tabular-nums text-zinc-900 dark:text-zinc-50">{(cStats?.avg_score || 0).toFixed(0)}%</span>
                             </div>
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Overall Average</p>
                             <p className="mt-1 text-xs text-zinc-500">
-                              {candidateAttempts.filter(a => a.score_percent >= 60).length} passed&nbsp;·&nbsp;
-                              {candidateAttempts.filter(a => a.score_percent < 60).length} failed
+                              {cStats?.passed_count || 0} passed&nbsp;·&nbsp;
+                              {cStats?.failed_count || 0} failed
                             </p>
                             <div className="mt-3 h-2 w-48 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                              <div className={`h-full rounded-full transition-all ${
-                                candidateAvg >= 80 ? "bg-emerald-500" : candidateAvg >= 60 ? "bg-amber-500" : "bg-red-500"
-                              }`} style={{ width: `${candidateAvg}%` }} />
+                              <div className={`h-full rounded-full transition-all ${(cStats?.avg_score || 0) >= 80 ? "bg-emerald-500" : (cStats?.avg_score || 0) >= 60 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${cStats?.avg_score || 0}%` }} />
                             </div>
                           </div>
                         </div>
@@ -1010,14 +997,14 @@ export default function AdminPage() {
                 </div>
 
                 {/* ── Enhanced stat cards ───────────────────────────────── */}
-                {!attemptsLoading && attempts.length > 0 && (
+                {!attemptsLoading && globalStats && attempts.length > 0 && (
                   <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     {[
-                      { label: "Candidates", value: uniqueEmails.length, suffix: "", colour: "violet", glow: "bg-violet-500/10" },
-                      { label: "Total Attempts", value: totalAttempts, suffix: "", colour: "blue", glow: "bg-blue-500/10" },
-                      { label: "Avg. Score", value: avgScore.toFixed(1), suffix: "%", colour: "indigo", glow: "bg-indigo-500/10" },
-                      { label: "Top Score", value: topScore.toFixed(1), suffix: "%", colour: "emerald", glow: "bg-emerald-500/10" },
-                      { label: "Pass Rate", value: passRate.toFixed(0), suffix: "%", colour: "amber", glow: "bg-amber-500/10" },
+                      { label: "Candidates", value: globalStats.unique_candidates, suffix: "", colour: "violet", glow: "bg-violet-500/10" },
+                      { label: "Total Attempts", value: globalStats.total_attempts, suffix: "", colour: "blue", glow: "bg-blue-500/10" },
+                      { label: "Avg. Score", value: globalStats.avg_score.toFixed(1), suffix: "%", colour: "indigo", glow: "bg-indigo-500/10" },
+                      { label: "Top Score", value: globalStats.top_score.toFixed(1), suffix: "%", colour: "emerald", glow: "bg-emerald-500/10" },
+                      { label: "Pass Rate", value: globalStats.pass_rate.toFixed(0), suffix: "%", colour: "amber", glow: "bg-amber-500/10" },
                     ].map((card) => (
                       <div key={card.label} className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
                         <div className={`absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full ${card.glow} blur-2xl transition-transform duration-700 group-hover:scale-150`} />
@@ -1031,14 +1018,14 @@ export default function AdminPage() {
                 )}
 
                 {/* ── Score distribution mini-chart (global) ──────────── */}
-                {!attemptsLoading && attempts.length > 1 && (() => {
+                {!attemptsLoading && globalStats && attempts.length > 1 && (() => {
                   const buckets = [
-                    { label: "0–20", min: 0, max: 20 },
-                    { label: "21–40", min: 21, max: 40 },
-                    { label: "41–60", min: 41, max: 60 },
-                    { label: "61–80", min: 61, max: 80 },
-                    { label: "81–100", min: 81, max: 100 },
-                  ].map((b) => ({ ...b, count: attempts.filter((a) => a.score_percent >= b.min && a.score_percent <= b.max).length }));
+                    { label: "0–20", min: 0, count: globalStats.score_distribution["0–20"] || 0 },
+                    { label: "21–40", min: 21, count: globalStats.score_distribution["21–40"] || 0 },
+                    { label: "41–60", min: 41, count: globalStats.score_distribution["41–60"] || 0 },
+                    { label: "61–80", min: 61, count: globalStats.score_distribution["61–80"] || 0 },
+                    { label: "81–100", min: 81, count: globalStats.score_distribution["81–100"] || 0 },
+                  ];
                   const maxCount = Math.max(...buckets.map((b) => b.count), 1);
                   return (
                     <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
