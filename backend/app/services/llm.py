@@ -29,9 +29,14 @@ class _LLMExamPayload(BaseModel):
     questions: list[_LLMQuestion] = Field(min_length=1, max_length=100)
 
 
-def _build_user_prompt(topic: str, complexity: str, total_questions: int) -> str:
+def _build_user_prompt(topics: list[str], complexity: str, total_questions: int) -> str:
+    topics_str = ", ".join(repr(t) for t in topics)
+    topic_clause = (
+        f"covering the topic: {topics_str}" if len(topics) == 1
+        else f"covering ALL of the following topics (distribute questions across them): {topics_str}"
+    )
     return (
-        f"Generate exactly {total_questions} distinct multiple-choice questions on the topic: {topic!r}. "
+        f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
         f"Target difficulty/complexity: {complexity!r}. "
         "Each question must have exactly four options as plain strings, one correct answer identified by "
         "correct_index 0-3 matching the position in options. "
@@ -43,11 +48,11 @@ def _build_user_prompt(topic: str, complexity: str, total_questions: int) -> str
 async def generate_mcq_payload(
     settings: Settings,
     *,
-    topic: str,
+    topics: list[str],
     complexity: str,
     total_questions: int,
 ) -> _LLMExamPayload:
-    prompt = _build_user_prompt(topic, complexity, total_questions)
+    prompt = _build_user_prompt(topics, complexity, total_questions)
 
     if settings.llm_provider == LLMProvider.OPENAI:
         return await _generate_openai(settings, prompt, total_questions)

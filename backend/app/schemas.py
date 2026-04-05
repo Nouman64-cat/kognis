@@ -20,16 +20,20 @@ class AdminAuthStatusResponse(BaseModel):
 
 
 class AdminGenerateExamRequest(BaseModel):
-    topic: str = Field(min_length=1, max_length=512)
+    title: str | None = Field(default=None, max_length=512)
+    topics: list[str] = Field(min_length=1, max_length=10, description="One or more topics")
     complexity: str = Field(min_length=1, max_length=64)
     total_questions: int = Field(ge=1, le=100)
+    duration_minutes: int | None = Field(default=None, ge=1, le=300)
 
 
 class AdminGenerateExamResponse(BaseModel):
     exam_id: int
-    topic: str
+    title: str | None
+    topics: list[str]
     complexity: str
     total_questions: int
+    duration_minutes: int | None
 
 
 class CandidateRegisterRequest(BaseModel):
@@ -45,9 +49,11 @@ class CandidatePublic(BaseModel):
 
 class ExamSummary(BaseModel):
     id: int
-    topic: str
+    title: str | None
+    topics: list[str]
     complexity: str
     total_questions: int
+    duration_minutes: int | None
 
 
 class QuestionPublic(BaseModel):
@@ -102,10 +108,13 @@ class AttemptRow(BaseModel):
     candidate_email: str
     exam_id: int
     exam_topic: str
+    exam_topics: list[str]
+    exam_title: str | None
     exam_complexity: str
     total_questions: int
     score_percent: float
     correct_count: int
+    duration_minutes: int | None
 
 
 class ListAttemptsResponse(BaseModel):

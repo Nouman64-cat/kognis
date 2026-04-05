@@ -21,9 +21,11 @@ async def list_exams(session: AsyncSession = Depends(db_session)) -> list[ExamSu
         out.append(
             ExamSummary(
                 id=e.id,
-                topic=e.topic,
+                title=e.title,
+                topics=e.topics if e.topics else [e.topic],
                 complexity=e.complexity,
                 total_questions=e.total_questions,
+                duration_minutes=e.duration_minutes,
             )
         )
     return out
@@ -73,9 +75,11 @@ async def get_exam_questions(
     return ExamQuestionsResponse(
         exam=ExamSummary(
             id=exam.id,
-            topic=exam.topic,
+            title=exam.title,
+            topics=exam.topics if exam.topics else [exam.topic],
             complexity=exam.complexity,
             total_questions=exam.total_questions,
+            duration_minutes=exam.duration_minutes,
         ),
         questions=[
             QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in questions

@@ -96,9 +96,11 @@ export async function adminSetPassword(otp: string, newPassword: string): Promis
 }
 
 export async function generateExamAdmin(body: {
-  topic: string;
+  title?: string;
+  topics: string[];
   complexity: string;
   total_questions: number;
+  duration_minutes?: number;
 }): Promise<AdminGenerateResponse> {
   const token = getAdminToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

@@ -1,8 +1,10 @@
 export type ExamSummary = {
   id: number;
-  topic: string;
+  title: string | null;
+  topics: string[];
   complexity: string;
   total_questions: number;
+  duration_minutes: number | null;
 };
 
 export type CandidatePublic = {
@@ -24,9 +26,11 @@ export type ExamQuestionsResponse = {
 
 export type AdminGenerateResponse = {
   exam_id: number;
-  topic: string;
+  title: string | null;
+  topics: string[];
   complexity: string;
   total_questions: number;
+  duration_minutes: number | null;
 };
 
 export type SubmitExamResponse = {
@@ -53,10 +57,13 @@ export type AttemptRow = {
   candidate_email: string;
   exam_id: number;
   exam_topic: string;
+  exam_topics: string[];
+  exam_title: string | null;
   exam_complexity: string;
   total_questions: number;
   score_percent: number;
   correct_count: number;
+  duration_minutes: number | null;
 };
 
 export type ListAttemptsResponse = {

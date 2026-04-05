@@ -43,9 +43,12 @@ class Exam(SQLModel, table=True):
     __tablename__ = "exam"
 
     id: int | None = Field(default=None, primary_key=True)
-    topic: str = Field(max_length=512, index=True)
+    topic: str = Field(max_length=512, index=True)  # legacy single-topic kept for compatibility
+    topics: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    title: str | None = Field(default=None, max_length=512)
     complexity: str = Field(max_length=64, index=True)
     total_questions: int = Field(ge=0)
+    duration_minutes: int | None = Field(default=None, nullable=True)
 
     questions: list["Question"] = Relationship(back_populates="exam", cascade_delete=True)
     attempts: list["ExamAttempt"] = Relationship(back_populates="exam", cascade_delete=True)

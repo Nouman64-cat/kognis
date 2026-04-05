@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getExamQuestions,
   listExams,
@@ -19,6 +19,13 @@ export type CandidateFlowProps = {
   presetExamId?: number;
 };
 
+/** Format seconds as MM:SS */
+function fmtTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [step, setStep] = useState<Step>("register");
   const [email, setEmail] = useState("");
@@ -31,6 +38,53 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ─── Timer state ──────────────────────────────────────────────────────────
+  const [timeLeft, setTimeLeft] = useState<number | null>(null); // seconds
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoSubmitRef = useRef<(() => void) | null>(null);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const startTimer = useCallback(
+    (seconds: number) => {
+      stopTimer();
+      setTimeLeft(seconds);
+      timerRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev === null || prev <= 1) {
+            stopTimer();
+            // Auto-submit when hitting zero
+            autoSubmitRef.current?.();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    },
+    [stopTimer],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => () => stopTimer(), [stopTimer]);
+
+  // ─── Derived timer colours ─────────────────────────────────────────────────
+  const timerColour =
+    timeLeft === null
+      ? ""
+      : bundle?.exam.duration_minutes
+        ? timeLeft / (bundle.exam.duration_minutes * 60) < 0.1
+          ? "text-red-600 dark:text-red-400 animate-pulse"
+          : timeLeft / (bundle.exam.duration_minutes * 60) < 0.2
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-zinc-700 dark:text-zinc-200"
+        : "";
+
+  // ─── Restore email ────────────────────────────────────────────────────────
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -40,6 +94,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     }
   }, []);
 
+  // ─── Navigate helpers ─────────────────────────────────────────────────────
   const goExams = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -63,12 +118,17 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         setBundle(data);
         setSelectedExam({
           id: data.exam.id,
-          topic: data.exam.topic,
+          title: data.exam.title,
+          topics: data.exam.topics,
           complexity: data.exam.complexity,
           total_questions: data.exam.total_questions,
+          duration_minutes: data.exam.duration_minutes,
         });
         setChoices({});
         setStep("take");
+        if (data.exam.duration_minutes) {
+          startTimer(data.exam.duration_minutes * 60);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load questions");
         setSelectedExam(null);
@@ -77,7 +137,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         setLoading(false);
       }
     },
-    [email],
+    [email, startTimer],
   );
 
   const startExam = async (exam: ExamSummary) => {
@@ -89,6 +149,9 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       setBundle(data);
       setChoices({});
       setStep("take");
+      if (data.exam.duration_minutes) {
+        startTimer(data.exam.duration_minutes * 60);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load questions");
       setSelectedExam(null);
@@ -96,6 +159,41 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       setLoading(false);
     }
   };
+
+  // ─── Submit helpers ───────────────────────────────────────────────────────
+  const doSubmit = useCallback(
+    async (currentChoices: Record<number, number>, currentBundle: ExamQuestionsResponse) => {
+      stopTimer();
+      setLoading(true);
+      setError(null);
+      try {
+        const ids = currentBundle.questions.map((q) => q.id);
+        const answers = ids.map((question_id) => ({
+          question_id,
+          chosen_option_index: currentChoices[question_id] ?? 0,
+        }));
+        const res = await submitExam(
+          currentBundle.exam.id,
+          email.trim().toLowerCase(),
+          answers,
+        );
+        setResult(res);
+        setStep("results");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Submit failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [email, stopTimer],
+  );
+
+  // Keep autoSubmitRef up-to-date with the latest choices + bundle for timer callback
+  useEffect(() => {
+    if (bundle) {
+      autoSubmitRef.current = () => void doSubmit(choices, bundle);
+    }
+  }, [choices, bundle, doSubmit]);
 
   const onRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,54 +244,56 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         return;
       }
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const answers = ids.map((question_id) => ({
-        question_id,
-        chosen_option_index: choices[question_id],
-      }));
-      const res = await submitExam(
-        bundle.exam.id,
-        email.trim().toLowerCase(),
-        answers,
-      );
-      setResult(res);
-      setStep("results");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Submit failed");
-    } finally {
-      setLoading(false);
-    }
+    await doSubmit(choices, bundle);
   };
 
   const inviteMode = presetExamId != null;
 
+  // ─── Display name for exam ────────────────────────────────────────────────
+  const examDisplayName = (exam: ExamSummary) =>
+    exam.title ?? exam.topics.join(", ");
+
   return (
     <div className="min-h-full bg-gradient-to-b from-zinc-50 to-zinc-100 px-4 py-10 dark:from-zinc-950 dark:to-black">
       <div className="mx-auto max-w-2xl">
-        <div className="mb-8 flex items-center justify-between">
+        {/* Top bar */}
+        <div className="mb-8 flex items-center justify-between gap-4">
           <Link
             href="/"
             className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400"
           >
             ← Home
           </Link>
-          {step !== "register" && (
-            <button
-              type="button"
-              onClick={() => {
-                setStep("register");
-                setBundle(null);
-                setSelectedExam(null);
-                setResult(null);
-                setError(null);
-              }}
-              className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
-            >
-              Reset flow
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            {/* Timer chip */}
+            {step === "take" && timeLeft !== null && (
+              <div
+                className={`flex items-center gap-2 rounded-xl border bg-white px-4 py-2 text-sm font-bold tabular-nums shadow-sm dark:bg-zinc-900 dark:border-zinc-700 ${timerColour}`}
+                aria-live="polite"
+                aria-label={`Time remaining: ${fmtTime(timeLeft)}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                {fmtTime(timeLeft)}
+              </div>
+            )}
+            {step !== "register" && (
+              <button
+                type="button"
+                onClick={() => {
+                  stopTimer();
+                  setStep("register");
+                  setBundle(null);
+                  setSelectedExam(null);
+                  setResult(null);
+                  setError(null);
+                  setTimeLeft(null);
+                }}
+                className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
+              >
+                Reset flow
+              </button>
+            )}
+          </div>
         </div>
 
         <h1 className="text-2xl font-semibold tracking-tight">Candidate</h1>
@@ -212,6 +312,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </div>
         )}
 
+        {/* ── Register ── */}
         {step === "register" && (
           <form
             onSubmit={onRegister}
@@ -261,6 +362,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </form>
         )}
 
+        {/* ── Exam List ── */}
         {step === "exams" && (
           <div className="mt-8 space-y-3">
             {exams.length === 0 ? (
@@ -276,9 +378,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   disabled={loading}
                   className="flex w-full flex-col rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-400 hover:shadow disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-emerald-600"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">{exam.topic}</span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-50">{examDisplayName(exam)}</span>
                   <span className="text-sm text-zinc-500">
-                    {exam.complexity} · {exam.total_questions} questions · #{exam.id}
+                    {exam.complexity} · {exam.total_questions} questions
+                    {exam.duration_minutes ? ` · ${exam.duration_minutes} min` : ""}
+                    {" "}· #{exam.id}
                   </span>
                 </button>
               ))
@@ -286,13 +390,30 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </div>
         )}
 
+        {/* ── Take Exam ── */}
         {step === "take" && bundle && (
           <form onSubmit={onSubmitExam} className="mt-8 space-y-8">
+            {/* Exam header */}
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <p className="text-sm text-zinc-500">
-                {selectedExam?.topic} · {bundle.exam.complexity}
+              <p className="font-semibold text-zinc-900 dark:text-zinc-50">
+                {examDisplayName(bundle.exam)}
               </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                {bundle.exam.complexity}
+                {bundle.exam.duration_minutes ? ` · ${bundle.exam.duration_minutes} min` : ""}
+                {" "}· {bundle.questions.length} questions
+              </p>
+              {bundle.exam.topics.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {bundle.exam.topics.map((t) => (
+                    <span key={t} className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+
             {bundle.questions.map((q, i) => (
               <fieldset
                 key={q.id}
@@ -335,6 +456,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </form>
         )}
 
+        {/* ── Results ── */}
         {step === "results" && result && (
           <div className="mt-8 space-y-6">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 dark:border-emerald-900 dark:bg-emerald-950/40">

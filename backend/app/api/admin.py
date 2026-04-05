@@ -28,10 +28,18 @@ async def generate_exam(
     session: AsyncSession = Depends(db_session),
 ) -> AdminGenerateExamResponse:
     settings = get_settings()
+    # Normalise and deduplicate topics
+    clean_topics = list(dict.fromkeys(t.strip() for t in body.topics if t.strip()))
+    if not clean_topics:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one non-empty topic is required.")
+
+    # Use first topic as legacy `topic` field for backwards compat
+    primary_topic = clean_topics[0]
+
     try:
         payload = await generate_mcq_payload(
             settings,
-            topic=body.topic.strip(),
+            topics=clean_topics,
             complexity=body.complexity.strip(),
             total_questions=body.total_questions,
         )
@@ -39,9 +47,12 @@ async def generate_exam(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
 
     exam = Exam(
-        topic=body.topic.strip(),
+        topic=primary_topic,
+        topics=clean_topics,
+        title=body.title.strip() if body.title else None,
         complexity=body.complexity.strip(),
         total_questions=len(payload.questions),
+        duration_minutes=body.duration_minutes,
     )
     session.add(exam)
     await session.flush()
@@ -62,9 +73,11 @@ async def generate_exam(
 
     return AdminGenerateExamResponse(
         exam_id=exam.id,
-        topic=exam.topic,
+        title=exam.title,
+        topics=exam.topics or [exam.topic],
         complexity=exam.complexity,
         total_questions=exam.total_questions,
+        duration_minutes=exam.duration_minutes,
     )
 
 
@@ -101,10 +114,13 @@ async def list_attempts(
                 candidate_email=a.candidate.email,
                 exam_id=a.exam.id,
                 exam_topic=a.exam.topic,
+                exam_topics=a.exam.topics if a.exam.topics else [a.exam.topic],
+                exam_title=a.exam.title,
                 exam_complexity=a.exam.complexity,
                 total_questions=a.exam.total_questions,
                 score_percent=round(a.final_score, 1),
                 correct_count=correct,
+                duration_minutes=a.exam.duration_minutes,
             )
         )
     return ListAttemptsResponse(attempts=attempts)

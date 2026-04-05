@@ -61,9 +61,13 @@ export default function AdminPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates">("overview");
-  const [topic, setTopic] = useState("");
+  // Create exam form state
+  const [examTitle, setExamTitle] = useState("");
+  const [topics, setTopics] = useState<string[]>([]);
+  const [topicInput, setTopicInput] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
+  const [durationMinutes, setDurationMinutes] = useState<number | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -73,9 +77,11 @@ export default function AdminPage() {
   const [copiedExamId, setCopiedExamId] = useState<number | null>(null);
   const [success, setSuccess] = useState<{
     exam_id: number;
-    topic: string;
+    title: string | null;
+    topics: string[];
     complexity: string;
     total_questions: number;
+    duration_minutes: number | null;
   } | null>(null);
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
   const [attemptsLoading, setAttemptsLoading] = useState(false);
@@ -149,18 +155,27 @@ export default function AdminPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (topics.length === 0) {
+      setError("Add at least one topic.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
       const res = await generateExamAdmin({
-        topic: topic.trim(),
+        title: examTitle.trim() || undefined,
+        topics,
         complexity: complexity.trim(),
         total_questions: totalQuestions,
+        duration_minutes: durationMinutes !== "" ? durationMinutes : undefined,
       });
       setCopied(false);
       setSuccess(res);
-      setTopic("");
+      setExamTitle("");
+      setTopics([]);
+      setTopicInput("");
+      setDurationMinutes("");
       void loadExams();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -168,6 +183,14 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
+  const addTopic = () => {
+    const t = topicInput.trim();
+    if (t && !topics.includes(t)) setTopics((prev) => [...prev, t]);
+    setTopicInput("");
+  };
+
+  const removeTopic = (t: string) => setTopics((prev) => prev.filter((x) => x !== t));
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "—";
 
@@ -424,8 +447,13 @@ export default function AdminPage() {
                             </span>
                             <span className="opacity-50">&bull;</span>
                             <span>{success.total_questions} questions</span>
+                            {success.duration_minutes && (
+                              <><span className="opacity-50">&bull;</span><span>{success.duration_minutes}min</span></>
+                            )}
                             <span className="opacity-50">&bull;</span>
-                            <span className="font-medium">{success.topic}</span>
+                            {success.topics.map((t) => (
+                              <span key={t} className="rounded-full bg-emerald-200/50 px-2 py-0.5 text-xs font-semibold dark:bg-emerald-800/50">{t}</span>
+                            ))}
                             <span className="rounded-full bg-emerald-200/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider dark:bg-emerald-800/50">{success.complexity}</span>
                           </div>
                         </div>
@@ -470,19 +498,59 @@ export default function AdminPage() {
                   )}
 
                   <form onSubmit={onSubmit} className="grid relative z-10 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="sm:col-span-2">
-                      <label htmlFor="topic" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
-                        Primary Topic
+                    {/* Exam Title */}
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <label htmlFor="exam-title" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Exam Title <span className="font-normal text-zinc-400">(optional)</span>
                       </label>
                       <input
-                        id="topic"
-                        required
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                        placeholder="e.g. React performance, Python async"
+                        id="exam-title"
+                        value={examTitle}
+                        onChange={(e) => setExamTitle(e.target.value)}
+                        placeholder="e.g. JavaScript Fundamentals Assessment"
                         className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
                       />
                     </div>
+                    {/* Topics */}
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <label htmlFor="topic-input" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Topics <span className="font-normal text-zinc-400">(add one or more)</span>
+                      </label>
+                      {/* Tag display */}
+                      {topics.length > 0 && (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {topics.map((t) => (
+                            <span key={t} className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                              {t}
+                              <button type="button" onClick={() => removeTopic(t)} className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-amber-200 dark:hover:bg-amber-700/50">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <input
+                          id="topic-input"
+                          value={topicInput}
+                          onChange={(e) => setTopicInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopic(); } }}
+                          placeholder="e.g. React Hooks"
+                          className="flex-1 rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={addTopic}
+                          className="shrink-0 rounded-xl bg-amber-100 px-4 py-3.5 text-sm font-bold text-amber-800 transition hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {topics.length === 0 && (
+                        <p className="mt-2 text-xs text-zinc-400">Press Enter or click + Add after typing a topic.</p>
+                      )}
+                    </div>
+                    {/* Complexity */}
                     <div>
                       <label
                         htmlFor="complexity"
@@ -506,6 +574,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
+                    {/* Total Questions */}
                     <div>
                       <label htmlFor="n" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
                         Total Questions
@@ -521,10 +590,26 @@ export default function AdminPage() {
                         className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
                       />
                     </div>
+                    {/* Duration */}
+                    <div className="sm:col-span-2">
+                      <label htmlFor="duration" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Duration <span className="font-normal text-zinc-400">(minutes, optional)</span>
+                      </label>
+                      <input
+                        id="duration"
+                        type="number"
+                        min={1}
+                        max={300}
+                        value={durationMinutes}
+                        onChange={(e) => setDurationMinutes(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="No time limit"
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                      />
+                    </div>
                     <div className="flex items-center justify-end pt-4 sm:col-span-2 lg:col-span-4 mt-2 border-t border-zinc-100/80 dark:border-zinc-800/60">
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || topics.length === 0}
                         className="group relative mt-6 inline-flex w-full min-w-[220px] items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-amber-500 px-6 py-3.5 text-sm font-bold text-amber-950 shadow-md shadow-amber-500/20 transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/30 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-400 sm:w-auto"
                       >
                         <div className="absolute inset-0 flex h-full w-full justify-center [transform:skew(-12deg)_translateX(-120%)] group-hover:duration-1000 group-hover:[transform:skew(-12deg)_translateX(120%)]">
@@ -629,7 +714,7 @@ export default function AdminPage() {
                           return (
                             <tr key={exam.id} className="bg-white dark:bg-zinc-900">
                               <td className="max-w-[200px] px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
-                                <span className="line-clamp-2">{exam.topic}</span>
+                                <span className="line-clamp-2">{exam.title ?? exam.topics.join(", ")}</span>
                               </td>
                               <td className="hidden px-4 py-3 capitalize text-zinc-600 sm:table-cell dark:text-zinc-400">
                                 {exam.complexity}
@@ -680,7 +765,7 @@ export default function AdminPage() {
                 return (
                   a.candidate_name.toLowerCase().includes(q) ||
                   a.candidate_email.toLowerCase().includes(q) ||
-                  a.exam_topic.toLowerCase().includes(q)
+                  a.exam_topics.join(" ").toLowerCase().includes(q) || (a.exam_title ?? "").toLowerCase().includes(q)
                 );
               });
               return (
@@ -805,7 +890,7 @@ export default function AdminPage() {
                               </td>
                               <td className="hidden px-5 py-4 text-zinc-500 sm:table-cell dark:text-zinc-400">{a.candidate_email}</td>
                               <td className="max-w-[180px] px-5 py-4">
-                                <span className="line-clamp-1 font-medium text-zinc-800 dark:text-zinc-200">{a.exam_topic}</span>
+                                <span className="line-clamp-1 font-medium text-zinc-800 dark:text-zinc-200">{a.exam_title ?? a.exam_topics.join(", ")}</span>
                               </td>
                               <td className="hidden px-5 py-4 capitalize text-zinc-500 md:table-cell dark:text-zinc-400">{a.exam_complexity}</td>
                               <td className="px-5 py-4">
