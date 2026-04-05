@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlmodel import select
 
 from app.config import get_settings
 from app.deps import db_session, verify_admin
-from app.models import Exam, Question
-from app.schemas import AdminGenerateExamRequest, AdminGenerateExamResponse
+from app.models import Exam, ExamAttempt, Question
+from app.schemas import (
+    AdminGenerateExamRequest,
+    AdminGenerateExamResponse,
+    AttemptRow,
+    ListAttemptsResponse,
+)
 from app.services.llm import generate_mcq_payload
 
 router = APIRouter()
@@ -59,3 +66,45 @@ async def generate_exam(
         complexity=exam.complexity,
         total_questions=exam.total_questions,
     )
+
+
+@router.get(
+    "/attempts",
+    response_model=ListAttemptsResponse,
+)
+async def list_attempts(
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> ListAttemptsResponse:
+    """Return every exam attempt with candidate and exam details."""
+    result = await session.execute(
+        select(ExamAttempt)
+        .options(
+            selectinload(ExamAttempt.candidate),
+            selectinload(ExamAttempt.exam),
+            selectinload(ExamAttempt.candidate_answers),
+        )
+        .order_by(ExamAttempt.id.desc())
+    )
+    rows = result.scalars().all()
+
+    attempts: list[AttemptRow] = []
+    for a in rows:
+        if a.candidate is None or a.exam is None:
+            continue
+        correct = sum(1 for ans in a.candidate_answers if ans.is_correct)
+        attempts.append(
+            AttemptRow(
+                attempt_id=a.id,
+                candidate_id=a.candidate.id,
+                candidate_name=a.candidate.full_name,
+                candidate_email=a.candidate.email,
+                exam_id=a.exam.id,
+                exam_topic=a.exam.topic,
+                exam_complexity=a.exam.complexity,
+                total_questions=a.exam.total_questions,
+                score_percent=round(a.final_score, 1),
+                correct_count=correct,
+            )
+        )
+    return ListAttemptsResponse(attempts=attempts)

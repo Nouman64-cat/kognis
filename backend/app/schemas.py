@@ -93,3 +93,20 @@ class SubmitExamResponse(BaseModel):
     correct_count: int
     total_questions: int
     results: list[PerQuestionResult]
+
+
+class AttemptRow(BaseModel):
+    attempt_id: int
+    candidate_id: int
+    candidate_name: str
+    candidate_email: str
+    exam_id: int
+    exam_topic: str
+    exam_complexity: str
+    total_questions: int
+    score_percent: float
+    correct_count: int
+
+
+class ListAttemptsResponse(BaseModel):
+    attempts: list[AttemptRow]

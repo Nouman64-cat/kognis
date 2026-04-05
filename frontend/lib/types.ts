@@ -45,3 +45,20 @@ export type SubmitExamResponse = {
 };
 
 export type ApiErrorBody = { detail?: string | unknown };
+
+export type AttemptRow = {
+  attempt_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  exam_id: number;
+  exam_topic: string;
+  exam_complexity: string;
+  total_questions: number;
+  score_percent: number;
+  correct_count: number;
+};
+
+export type ListAttemptsResponse = {
+  attempts: AttemptRow[];
+};

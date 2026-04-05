@@ -22,9 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
-import { generateExamAdmin, listExams } from "@/lib/api";
+import { generateExamAdmin, listAttempts, listExams } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
-import type { ExamSummary } from "@/lib/types";
+import type { AttemptRow, ExamSummary } from "@/lib/types";
 
 function scrollPageToSection(id: string) {
   const el = document.getElementById(id);
@@ -60,7 +60,7 @@ function SidebarSectionButton({
 export default function AdminPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates">("overview");
   const [topic, setTopic] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
@@ -77,6 +77,10 @@ export default function AdminPage() {
     complexity: string;
     total_questions: number;
   } | null>(null);
+  const [attempts, setAttempts] = useState<AttemptRow[]>([]);
+  const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
@@ -90,7 +94,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, "");
-    if (hash && ["overview", "create", "library"].includes(hash)) {
+    if (hash && ["overview", "create", "library", "candidates"].includes(hash)) {
       setActiveTab(hash as any);
     }
   }, []);
@@ -112,6 +116,26 @@ export default function AdminPage() {
   useEffect(() => {
     void loadExams();
   }, [loadExams]);
+
+  const loadAttempts = useCallback(async () => {
+    setAttemptsLoading(true);
+    setAttemptsError(null);
+    try {
+      const res = await listAttempts();
+      setAttempts(res.attempts);
+    } catch (e) {
+      setAttemptsError(e instanceof Error ? e.message : "Could not load attempts");
+      setAttempts([]);
+    } finally {
+      setAttemptsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "candidates" && attempts.length === 0 && !attemptsLoading) {
+      void loadAttempts();
+    }
+  }, [activeTab, attempts.length, attemptsLoading, loadAttempts]);
 
   const inviteUrl = useMemo(() => {
     if (!success) return "";
@@ -196,6 +220,7 @@ export default function AdminPage() {
           <SidebarSectionButton sectionId="overview" icon={Layers} label="Overview" onGoTo={goToSection} />
           <SidebarSectionButton sectionId="create" icon={Sparkles} label="Create exam" onGoTo={goToSection} />
           <SidebarSectionButton sectionId="library" icon={Library} label="Exam library" onGoTo={goToSection} />
+          <SidebarSectionButton sectionId="candidates" icon={Users} label="Candidates" onGoTo={goToSection} />
 
           <div className="my-3 border-t border-zinc-800" />
 
@@ -647,6 +672,165 @@ export default function AdminPage() {
               </div>
             </section>
             )}
+
+            {/* Candidates / Attempts */}
+            {activeTab === "candidates" && (() => {
+              const filtered = attempts.filter((a) => {
+                const q = searchQuery.toLowerCase();
+                return (
+                  a.candidate_name.toLowerCase().includes(q) ||
+                  a.candidate_email.toLowerCase().includes(q) ||
+                  a.exam_topic.toLowerCase().includes(q)
+                );
+              });
+              return (
+              <section id="candidates" className="animate-in fade-in slide-in-from-bottom-4 duration-500" aria-labelledby="candidates-heading">
+                <div className="mb-8 flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-500/20 shadow-sm dark:bg-violet-500/10 dark:text-violet-400 dark:ring-violet-500/30">
+                      <Users className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 id="candidates-heading" className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                        Candidates &amp; Results
+                      </h2>
+                      <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                        All exam attempts — see who attempted which exam and their scores.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadAttempts()}
+                    disabled={attemptsLoading}
+                    className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${attemptsLoading ? "animate-spin" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                {/* Stats row */}
+                {!attemptsLoading && attempts.length > 0 && (() => {
+                  const unique = new Set(attempts.map((a) => a.candidate_email)).size;
+                  const avg = attempts.reduce((s, a) => s + a.score_percent, 0) / attempts.length;
+                  const top = Math.max(...attempts.map((a) => a.score_percent));
+                  return (
+                    <div className="mb-8 grid gap-4 sm:grid-cols-3">
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-violet-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Unique Candidates</p>
+                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{unique}</p>
+                      </div>
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-blue-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg. Score</p>
+                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{avg.toFixed(1)}<span className="ml-1 text-2xl font-bold text-zinc-400">%</span></p>
+                      </div>
+                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-amber-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top Score</p>
+                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{top.toFixed(1)}<span className="ml-1 text-2xl font-bold text-zinc-400">%</span></p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Search */}
+                {attempts.length > 0 && (
+                  <div className="mb-4">
+                    <input
+                      type="search"
+                      placeholder="Search by name, email or topic…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3 text-zinc-900 shadow-sm transition placeholder:text-zinc-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:focus:bg-zinc-900 sm:w-80"
+                    />
+                  </div>
+                )}
+
+                {attemptsError && (
+                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
+                    {attemptsError}
+                  </p>
+                )}
+
+                {attemptsLoading && (
+                  <div className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500">
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Loading attempts…
+                  </div>
+                )}
+
+                {!attemptsLoading && !attemptsError && attempts.length === 0 && (
+                  <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/50 py-16 text-center dark:border-zinc-700 dark:bg-zinc-800/30">
+                    <Users className="h-12 w-12 text-zinc-300 dark:text-zinc-600" />
+                    <p className="text-base font-semibold text-zinc-600 dark:text-zinc-400">No attempts yet</p>
+                    <p className="max-w-xs text-sm text-zinc-500">Once candidates complete exams, their results will appear here.</p>
+                  </div>
+                )}
+
+                {filtered.length > 0 && (
+                  <div className="overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm dark:border-zinc-700">
+                    <table className="w-full min-w-[700px] text-left text-sm">
+                      <thead className="border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-700 dark:bg-zinc-800/50">
+                        <tr>
+                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Candidate</th>
+                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 sm:table-cell dark:text-zinc-300">Email</th>
+                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Exam Topic</th>
+                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 md:table-cell dark:text-zinc-300">Level</th>
+                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Score</th>
+                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Correct / Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                        {filtered.map((a) => {
+                          const pct = a.score_percent;
+                          const scoreColor =
+                            pct >= 80 ? "text-emerald-600 dark:text-emerald-400" :
+                            pct >= 50 ? "text-amber-600 dark:text-amber-400" :
+                            "text-red-600 dark:text-red-400";
+                          const barColor =
+                            pct >= 80 ? "bg-emerald-500" :
+                            pct >= 50 ? "bg-amber-500" :
+                            "bg-red-500";
+                          return (
+                            <tr key={a.attempt_id} className="bg-white transition hover:bg-zinc-50/80 dark:bg-zinc-900 dark:hover:bg-zinc-800/60">
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                                    {a.candidate_name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{a.candidate_name}</span>
+                                </div>
+                              </td>
+                              <td className="hidden px-5 py-4 text-zinc-500 sm:table-cell dark:text-zinc-400">{a.candidate_email}</td>
+                              <td className="max-w-[180px] px-5 py-4">
+                                <span className="line-clamp-1 font-medium text-zinc-800 dark:text-zinc-200">{a.exam_topic}</span>
+                              </td>
+                              <td className="hidden px-5 py-4 capitalize text-zinc-500 md:table-cell dark:text-zinc-400">{a.exam_complexity}</td>
+                              <td className="px-5 py-4">
+                                <div className="flex flex-col gap-1.5">
+                                  <span className={`text-base font-extrabold tabular-nums ${scoreColor}`}>{pct.toFixed(1)}%</span>
+                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                    <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="hidden px-5 py-4 tabular-nums text-zinc-500 lg:table-cell dark:text-zinc-400">{a.correct_count} / {a.total_questions}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {!attemptsLoading && filtered.length === 0 && attempts.length > 0 && (
+                  <p className="mt-4 text-sm text-zinc-500">No results match your search.</p>
+                )}
+              </section>
+              );
+            })()}
           </div>
         </main>
       </div>

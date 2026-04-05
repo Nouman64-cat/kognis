@@ -4,6 +4,7 @@ import type {
   CandidatePublic,
   ExamQuestionsResponse,
   ExamSummary,
+  ListAttemptsResponse,
   SubmitExamResponse,
 } from "./types";
 
@@ -112,4 +113,16 @@ export async function generateExamAdmin(body: {
     throw new Error(err);
   }
   return res.json() as Promise<AdminGenerateResponse>;
+}
+
+export async function listAttempts(): Promise<ListAttemptsResponse> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${base()}/api/v1/admin/attempts`, {
+    cache: "no-store",
+    headers,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<ListAttemptsResponse>;
 }
