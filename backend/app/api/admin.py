@@ -13,6 +13,7 @@ from app.schemas import (
     CandidateAnalytics,
     GlobalAnalytics,
     ListAttemptsResponse,
+    parse_topic_mix_from_storage,
 )
 from app.services.llm import generate_mcq_payload
 
@@ -30,20 +31,16 @@ async def generate_exam(
     session: AsyncSession = Depends(db_session),
 ) -> AdminGenerateExamResponse:
     settings = get_settings()
-    # Normalise and deduplicate topics
-    clean_topics = list(dict.fromkeys(t.strip() for t in body.topics if t.strip()))
-    if not clean_topics:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="At least one non-empty topic is required.")
-
-    # Use first topic as legacy `topic` field for backwards compat
-    primary_topic = clean_topics[0]
-
+    # Exam "topics" for LLM + listing come from topic mix bucket names (order preserved, unique by validation)
+    clean_topics = [e.name for e in body.topic_mix]
+    primary_topic = clean_topics[0][:512]
     try:
         payload = await generate_mcq_payload(
             settings,
             topics=clean_topics,
             complexity=body.complexity.strip(),
             total_questions=body.total_questions,
+            topic_mix=body.topic_mix,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
@@ -56,6 +53,7 @@ async def generate_exam(
         total_questions=len(payload.questions),
         duration_minutes=body.duration_minutes,
         scheduled_for=body.scheduled_for,
+        topic_mix=[e.model_dump() for e in body.topic_mix],
     )
     session.add(exam)
     await session.flush()
@@ -68,6 +66,7 @@ async def generate_exam(
                 options=list(q.options),
                 correct_answer=q.correct_index,
                 explanation=q.explanation,
+                category=q.category,
             )
         )
 
@@ -84,6 +83,7 @@ async def generate_exam(
         duration_minutes=exam.duration_minutes,
         scheduled_for=exam.scheduled_for,
         created_at=exam.created_at,
+        topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
     )
 
 

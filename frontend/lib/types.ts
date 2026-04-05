@@ -1,3 +1,8 @@
+/** One bucket you name yourself; percents across all rows must sum to 100. */
+export type TopicMixEntry = { name: string; percent: number };
+
+export type ExamTopicMix = TopicMixEntry[];
+
 export type ExamSummary = {
   id: number;
   title: string | null;
@@ -7,6 +12,8 @@ export type ExamSummary = {
   duration_minutes: number | null;
   scheduled_for: string | null;
   created_at: string;
+  /** Present when the exam was generated with a custom mix */
+  topic_mix?: ExamTopicMix | null;
 };
 
 export type CandidatePublic = {
@@ -35,6 +42,7 @@ export type AdminGenerateResponse = {
   duration_minutes: number | null;
   scheduled_for: string | null;
   created_at: string;
+  topic_mix?: ExamTopicMix | null;
 };
 
 export type SubmitExamResponse = {

@@ -53,6 +53,7 @@ class Exam(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
+    topic_mix: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
@@ -71,6 +72,7 @@ class Question(SQLModel, table=True):
     options: list[str] = Field(sa_column=Column(JSON, nullable=False))
     correct_answer: int = Field(ge=0, le=3, description="Index 0-3 into options")
     explanation: str | None = Field(default=None, max_length=1024)
+    category: str | None = Field(default=None, max_length=128, description="User-defined mix bucket label")
 
     exam: Exam | None = Relationship(back_populates="questions")
     answers: list["CandidateAnswer"] = Relationship(back_populates="question", cascade_delete=True)

@@ -4,6 +4,7 @@ import type {
   CandidatePublic,
   ExamQuestionsResponse,
   ExamSummary,
+  ExamTopicMix,
   ListAttemptsResponse,
   SubmitExamResponse,
 } from "./types";
@@ -97,11 +98,11 @@ export async function adminSetPassword(otp: string, newPassword: string): Promis
 
 export async function generateExamAdmin(body: {
   title?: string;
-  topics: string[];
   complexity: string;
   total_questions: number;
   duration_minutes?: number;
   scheduled_for?: string | null;
+  topic_mix: ExamTopicMix;
 }): Promise<AdminGenerateResponse> {
   const token = getAdminToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

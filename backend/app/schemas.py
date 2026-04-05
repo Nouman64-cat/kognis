@@ -21,13 +21,51 @@ class AdminAuthStatusResponse(BaseModel):
     has_password: bool
 
 
+class TopicMixEntry(BaseModel):
+    """One row in the exam question mix: a label you choose plus its share of questions (percent)."""
+
+    name: str = Field(min_length=1, max_length=128, description="Bucket label; must be unique in the mix.")
+    percent: float = Field(ge=0, le=100)
+
+
+def parse_topic_mix_from_storage(raw: object | None) -> list[TopicMixEntry] | None:
+    """Load topic mix from JSON (new list format or legacy dict of name -> percent)."""
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        out: list[TopicMixEntry] = []
+        for item in raw:
+            if isinstance(item, dict) and "name" in item and "percent" in item:
+                out.append(TopicMixEntry.model_validate(item))
+        return out if out else None
+    if isinstance(raw, dict):
+        return [TopicMixEntry(name=str(k), percent=float(v)) for k, v in raw.items()]
+    return None
+
+
 class AdminGenerateExamRequest(BaseModel):
     title: str | None = Field(default=None, max_length=512)
-    topics: list[str] = Field(min_length=1, max_length=10, description="One or more topics")
     complexity: str = Field(min_length=1, max_length=64)
     total_questions: int = Field(ge=1, le=100)
     duration_minutes: int | None = Field(default=None, ge=1, le=300)
     scheduled_for: datetime | None = Field(default=None)
+    topic_mix: list[TopicMixEntry] = Field(
+        min_length=1,
+        max_length=32,
+        description="Your question buckets: each has a name and percent; percents must sum to 100.",
+    )
+
+    @field_validator("topic_mix")
+    @classmethod
+    def validate_topic_mix(cls, v: list[TopicMixEntry]) -> list[TopicMixEntry]:
+        stripped = [TopicMixEntry(name=e.name.strip(), percent=e.percent) for e in v]
+        names = [e.name for e in stripped]
+        if len(set(names)) != len(names):
+            raise ValueError("topic mix bucket names must be unique")
+        s = sum(e.percent for e in stripped)
+        if abs(s - 100.0) > 0.51:
+            raise ValueError("topic mix percentages must sum to 100")
+        return stripped
 
 
 class AdminGenerateExamResponse(BaseModel):
@@ -39,6 +77,7 @@ class AdminGenerateExamResponse(BaseModel):
     duration_minutes: int | None
     scheduled_for: datetime | None
     created_at: datetime
+    topic_mix: list[TopicMixEntry] | None = None
 
 
 class CandidateRegisterRequest(BaseModel):
@@ -61,6 +100,7 @@ class ExamSummary(BaseModel):
     duration_minutes: int | None
     scheduled_for: datetime | None
     created_at: datetime
+    topic_mix: list[TopicMixEntry] | None = None
 
 
 class QuestionPublic(BaseModel):

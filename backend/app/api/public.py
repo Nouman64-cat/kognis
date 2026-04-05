@@ -7,7 +7,14 @@ from sqlmodel import select
 
 from app.deps import db_session
 from app.models import Candidate, Exam, Question
-from app.schemas import CandidatePublic, CandidateRegisterRequest, ExamQuestionsResponse, ExamSummary, QuestionPublic
+from app.schemas import (
+    CandidatePublic,
+    CandidateRegisterRequest,
+    ExamQuestionsResponse,
+    ExamSummary,
+    QuestionPublic,
+    parse_topic_mix_from_storage,
+)
 
 router = APIRouter()
 
@@ -30,6 +37,7 @@ async def list_exams(session: AsyncSession = Depends(db_session)) -> list[ExamSu
                 duration_minutes=e.duration_minutes,
                 scheduled_for=e.scheduled_for,
                 created_at=e.created_at,
+                topic_mix=parse_topic_mix_from_storage(e.topic_mix),
             )
         )
     return out
@@ -89,6 +97,7 @@ async def get_exam_questions(
             duration_minutes=exam.duration_minutes,
             scheduled_for=exam.scheduled_for,
             created_at=exam.created_at,
+            topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
         ),
         questions=[
             QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in questions

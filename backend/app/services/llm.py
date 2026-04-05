@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections import Counter
+from typing import Annotated, Any
 
 import anthropic
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, create_model, field_validator
 
 from app.config import LLMProvider, Settings
+from app.schemas import TopicMixEntry
+from app.topic_mix import allocate_question_counts
+
+# Anthropic Haiku/Sonnet often cap output at 8192; large exams can truncate mid-JSON → too few questions.
+_ANTHROPIC_MAX_OUT: int = 8192
+# OpenAI: leave headroom so long stems/code don’t cut the array short.
+_OPENAI_MAX_COMPLETION_TOKENS: int = 16384
+_MAX_GENERATION_ATTEMPTS: int = 4
 
 
 class _LLMQuestion(BaseModel):
@@ -27,6 +36,11 @@ class _LLMQuestion(BaseModel):
     )
     correct_index: int = Field(ge=0, le=3)
     explanation: str = Field(min_length=1, max_length=1024, description="Short reason explaining why the correct answer is right.")
+    category: str = Field(
+        min_length=1,
+        max_length=128,
+        description='Must match the "category" string for this question from the user prompt (exact string).',
+    )
 
     @field_validator("options")
     @classmethod
@@ -41,19 +55,38 @@ class _LLMExamPayload(BaseModel):
     questions: list[_LLMQuestion] = Field(min_length=1, max_length=100)
 
 
-def _build_user_prompt(topics: list[str], complexity: str, total_questions: int) -> str:
+def _build_user_prompt(
+    topics: list[str],
+    complexity: str,
+    total_questions: int,
+    expected_counts: dict[str, int],
+) -> str:
     topics_str = ", ".join(repr(t) for t in topics)
     topic_clause = (
         f"covering the topic: {topics_str}" if len(topics) == 1
         else f"covering ALL of the following topics (distribute questions across them): {topics_str}"
     )
+
+    mix_lines: list[str] = []
+    for name, n in expected_counts.items():
+        if n <= 0:
+            continue
+        mix_lines.append(
+            f"- Exactly {n} question(s) with field category exactly equal to this string (copy verbatim, character-for-character): {name!r}. "
+            "Questions in this bucket should test skills and knowledge suggested by that label, in the context of the exam topics above."
+        )
+
+    mix_section = "\n".join(mix_lines) if mix_lines else "(No category breakdown — use general mix.)"
+
     return (
         f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
         f"Target difficulty/complexity: {complexity!r}. "
         "Each question must have exactly four options as plain strings, one correct answer identified by "
-        "correct_index 0-3 matching the position in options, and a concise 1-sentence explanation "
-        "of why the correct answer is correct. "
+        "correct_index 0-3 matching the position in options, a concise 1-sentence explanation, "
+        "and a category field set EXACTLY as specified below (copy the category string character-for-character). "
         "Do not include numbering prefixes in the question text. "
+        "QUESTION MIX (mandatory counts per category — your output must satisfy these exactly):\n"
+        f"{mix_section}\n"
         "CRITICAL — Markdown code blocks: If the stem or any option contains ANY programming code, shell "
         "commands, SQL, JSON, or multi-line snippets, you MUST wrap EVERY such snippet in a fenced block "
         "with a language tag (```python, ```javascript, ```sql, ```text, etc.). Put normal English sentences "
@@ -63,8 +96,22 @@ def _build_user_prompt(topics: list[str], complexity: str, total_questions: int)
         "GOOD example: prose line, then ```python\\ndef foo():\\n    return 1\\nprint(foo())\\n``` "
         "Use separate fenced blocks if there are multiple distinct snippets. "
         "Format code inside options the same way when an option contains code. "
-        "Vary scenarios and avoid duplicate stems."
+        "Vary scenarios and avoid duplicate stems. "
+        f"OUTPUT SIZE: The questions array MUST contain exactly {total_questions} items — not {total_questions - 1}, not {total_questions + 1}. "
+        "If space is tight, shorten stems and keep code samples minimal while still fair. "
+        "Count the array length before finishing."
     )
+
+
+def _validate_category_counts(payload: _LLMExamPayload, expected: dict[str, int]) -> None:
+    c = Counter(q.category for q in payload.questions)
+    for key, exp in expected.items():
+        got = c.get(key, 0)
+        if exp != got:
+            raise RuntimeError(f"Expected {exp} questions with category {key!r}, got {got}")
+    for key, got in c.items():
+        if key not in expected:
+            raise RuntimeError(f"Unexpected category {key!r} (not in the requested mix)")
 
 
 async def generate_mcq_payload(
@@ -73,22 +120,67 @@ async def generate_mcq_payload(
     topics: list[str],
     complexity: str,
     total_questions: int,
+    topic_mix: list[TopicMixEntry],
 ) -> _LLMExamPayload:
-    prompt = _build_user_prompt(topics, complexity, total_questions)
+    expected_counts = allocate_question_counts(topic_mix, total_questions)
+    base_prompt = _build_user_prompt(topics, complexity, total_questions, expected_counts)
+    allowed = list(expected_counts.keys())
 
-    if settings.llm_provider == LLMProvider.OPENAI:
-        return await _generate_openai(settings, prompt, total_questions)
-    if settings.llm_provider == LLMProvider.ANTHROPIC:
-        return await _generate_anthropic(settings, prompt, total_questions)
-    raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+    correction: str | None = None
+    last_err: str | None = None
+
+    for attempt in range(_MAX_GENERATION_ATTEMPTS):
+        extra = ""
+        if correction:
+            extra = (
+                "\n\n---\nCORRECTION REQUIRED:\n"
+                f"{correction}\n"
+                f"Reply with a complete exam only: the questions array MUST have exactly {total_questions} elements."
+            )
+        prompt = base_prompt + extra
+
+        try:
+            if settings.llm_provider == LLMProvider.OPENAI:
+                payload = await _generate_openai(settings, prompt, total_questions)
+            elif settings.llm_provider == LLMProvider.ANTHROPIC:
+                payload = await _generate_anthropic(settings, prompt, total_questions, allowed)
+            else:
+                raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
+
+            _validate_category_counts(payload, expected_counts)
+            return payload
+        except RuntimeError as e:
+            last_err = str(e)
+            recoverable = "Expected" in last_err and ("questions" in last_err or "category" in last_err)
+            if not recoverable:
+                raise
+            if attempt >= _MAX_GENERATION_ATTEMPTS - 1:
+                raise
+            correction = last_err
+
+    raise RuntimeError(last_err or "MCQ generation failed")
+
+
+def _dynamic_exam_payload_model(total_questions: int) -> type[BaseModel]:
+    """Exact array length helps OpenAI structured output match the requested count."""
+
+    n = total_questions
+    return create_model(
+        "_LLMExamPayloadDynamic",
+        __base__=BaseModel,
+        questions=(
+            Annotated[list[_LLMQuestion], Field(min_length=n, max_length=n)],
+            ...,
+        ),
+    )
 
 
 async def _generate_openai(settings: Settings, prompt: str, total_questions: int) -> _LLMExamPayload:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
 
+    DynamicPayload = _dynamic_exam_payload_model(total_questions)
     client = AsyncOpenAI(api_key=settings.openai_api_key)
-    # Native structured parsing (JSON schema enforced by the API)
     completion = await client.chat.completions.parse(
         model=settings.openai_model,
         messages=[
@@ -97,13 +189,15 @@ async def _generate_openai(settings: Settings, prompt: str, total_questions: int
                 "content": (
                     "You write high-quality employment screening MCQs. Output only via the required schema. "
                     "In question text and options, always put programming code in markdown fenced blocks "
-                    "(```python etc.), never as unstructured plain text."
+                    "(```python etc.), never as unstructured plain text. "
+                    "Every question MUST set category to exactly one of the strings given in the user message."
                 ),
             },
             {"role": "user", "content": prompt},
         ],
-        response_format=_LLMExamPayload,
+        response_format=DynamicPayload,
         temperature=0.4,
+        max_completion_tokens=min(_OPENAI_MAX_COMPLETION_TOKENS, 2000 + total_questions * 1800),
     )
     msg = completion.choices[0].message
     if msg.refusal:
@@ -111,19 +205,29 @@ async def _generate_openai(settings: Settings, prompt: str, total_questions: int
     parsed = msg.parsed
     if parsed is None:
         raise RuntimeError("OpenAI returned no parsed payload")
-    _validate_count(parsed, total_questions)
-    return parsed
+    out = _LLMExamPayload.model_validate(parsed.model_dump())
+    _validate_count(out, total_questions)
+    return out
 
 
-def _anthropic_tool_def() -> dict[str, Any]:
+def _anthropic_tool_def(allowed_categories: list[str], total_questions: int) -> dict[str, Any]:
+    if not allowed_categories:
+        raise ValueError("Anthropic tool requires at least one category")
+    cat_enum: dict[str, Any] = {
+        "type": "string",
+        "enum": allowed_categories,
+        "description": "Must match one of the category strings from the user message exactly.",
+    }
     return {
         "name": "emit_exam_questions",
-        "description": "Return the generated MCQ exam as structured JSON.",
+        "description": f"Return the generated MCQ exam as structured JSON. The questions array MUST contain exactly {total_questions} items.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "questions": {
                     "type": "array",
+                    "minItems": total_questions,
+                    "maxItems": total_questions,
                     "items": {
                         "type": "object",
                         "properties": {
@@ -143,10 +247,11 @@ def _anthropic_tool_def() -> dict[str, Any]:
                             "correct_index": {"type": "integer", "minimum": 0, "maximum": 3},
                             "explanation": {
                                 "type": "string",
-                                "description": "Short 1-sentence reason why the correct answer is correct"
+                                "description": "Short 1-sentence reason why the correct answer is correct",
                             },
+                            "category": cat_enum,
                         },
-                        "required": ["text", "options", "correct_index", "explanation"],
+                        "required": ["text", "options", "correct_index", "explanation", "category"],
                     },
                 }
             },
@@ -155,19 +260,26 @@ def _anthropic_tool_def() -> dict[str, Any]:
     }
 
 
-async def _generate_anthropic(settings: Settings, prompt: str, total_questions: int) -> _LLMExamPayload:
+async def _generate_anthropic(
+    settings: Settings,
+    prompt: str,
+    total_questions: int,
+    allowed_categories: list[str],
+) -> _LLMExamPayload:
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    tool = _anthropic_tool_def()
+    tool = _anthropic_tool_def(allowed_categories, total_questions)
+    # Use max output tokens to reduce truncation (common cause of N-1 questions).
     message = await client.messages.create(
         model=settings.anthropic_model,
-        max_tokens=8192,
+        max_tokens=_ANTHROPIC_MAX_OUT,
         system=(
             "You write high-quality employment screening MCQs. Use the provided tool exactly once. "
             "In question text and options, always put programming code in markdown fenced blocks "
-            "(```python etc.), never as unstructured plain text."
+            "(```python etc.), never as unstructured plain text. "
+            "Every question MUST set category to one of the allowed enum values exactly."
         ),
         messages=[{"role": "user", "content": prompt}],
         tools=[tool],

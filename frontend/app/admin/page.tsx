@@ -15,6 +15,7 @@ import {
   Library,
   LogOut,
   Menu,
+  Plus,
   RefreshCw,
   Sparkles,
   TrendingUp,
@@ -70,12 +71,11 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates">("overview");
   // Create exam form state
   const [examTitle, setExamTitle] = useState("");
-  const [topics, setTopics] = useState<string[]>([]);
-  const [topicInput, setTopicInput] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
   const [durationMinutes, setDurationMinutes] = useState<number | "">("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [topicMixRows, setTopicMixRows] = useState<{ id: string; name: string; percent: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -163,6 +163,18 @@ export default function AdminPage() {
     return candidateExamInviteUrl(success.exam_id);
   }, [success]);
 
+  const topicMixSum = useMemo(
+    () => topicMixRows.reduce((acc, r) => acc + (Number.isFinite(r.percent) ? r.percent : 0), 0),
+    [topicMixRows],
+  );
+  const topicMixValid = useMemo(() => {
+    if (topicMixRows.length === 0) return false;
+    const names = topicMixRows.map((r) => r.name.trim()).filter(Boolean);
+    if (names.length !== topicMixRows.length) return false;
+    if (new Set(names).size !== names.length) return false;
+    return Math.abs(topicMixSum - 100) < 0.51;
+  }, [topicMixRows, topicMixSum]);
+
   const totalQuestionBank = useMemo(
     () => exams.reduce((acc, e) => acc + e.total_questions, 0),
     [exams],
@@ -170,8 +182,10 @@ export default function AdminPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (topics.length === 0) {
-      setError("Add at least one topic.");
+    if (!topicMixValid) {
+      setError(
+        "Add at least one topic bucket with a name, ensure bucket names are unique, and set percentages to total 100%.",
+      );
       return;
     }
     setLoading(true);
@@ -180,17 +194,16 @@ export default function AdminPage() {
     try {
       const res = await generateExamAdmin({
         title: examTitle.trim() || undefined,
-        topics,
         complexity: complexity.trim(),
         total_questions: totalQuestions,
         duration_minutes: durationMinutes !== "" ? durationMinutes : undefined,
         scheduled_for: scheduledTime ? new Date(scheduledTime).toISOString() : null,
+        topic_mix: topicMixRows.map((r) => ({ name: r.name.trim(), percent: r.percent })),
       });
       setCopied(false);
       setSuccess(res);
       setExamTitle("");
-      setTopics([]);
-      setTopicInput("");
+      setTopicMixRows([]);
       setDurationMinutes("");
       setScheduledTime("");
       void loadExams();
@@ -200,14 +213,6 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
-
-  const addTopic = () => {
-    const t = topicInput.trim();
-    if (t && !topics.includes(t)) setTopics((prev) => [...prev, t]);
-    setTopicInput("");
-  };
-
-  const removeTopic = (t: string) => setTopics((prev) => prev.filter((x) => x !== t));
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "—";
 
@@ -427,7 +432,7 @@ export default function AdminPage() {
                           Create AI Exam
                         </h2>
                         <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                          Instantly generate dynamic, customized MCQs powered by AI. We&apos;ll create a unique candidate invite link ready to be shared immediately.
+                          Define your question topic mix (bucket names and percentages), then generate MCQs. You&apos;ll get a candidate invite link to share immediately.
                         </p>
                       </div>
                     </div>
@@ -468,6 +473,7 @@ export default function AdminPage() {
                               <><span className="opacity-50">&bull;</span><span>{success.duration_minutes}min</span></>
                             )}
                             <span className="opacity-50">&bull;</span>
+                            <span className="text-xs text-emerald-800/70 dark:text-emerald-300/70">Mix:</span>
                             {success.topics.map((t) => (
                               <span key={t} className="rounded-full bg-emerald-200/50 px-2 py-0.5 text-xs font-semibold dark:bg-emerald-800/50">{t}</span>
                             ))}
@@ -528,44 +534,99 @@ export default function AdminPage() {
                         className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
                       />
                     </div>
-                    {/* Topics */}
-                    <div className="sm:col-span-2 lg:col-span-4">
-                      <label htmlFor="topic-input" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
-                        Topics <span className="font-normal text-zinc-400">(add one or more)</span>
-                      </label>
-                      {/* Tag display */}
-                      {topics.length > 0 && (
-                        <div className="mb-3 flex flex-wrap gap-2">
-                          {topics.map((t) => (
-                            <span key={t} className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
-                              {t}
-                              <button type="button" onClick={() => removeTopic(t)} className="flex h-4 w-4 items-center justify-center rounded-full hover:bg-amber-200 dark:hover:bg-amber-700/50">
-                                <X className="h-3 w-3" />
-                              </button>
-                            </span>
-                          ))}
+                    {/* Question topic mix: user-defined bucket names + percentages (sum 100) */}
+                    <div className="sm:col-span-2 lg:col-span-4 rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-4 dark:border-zinc-700/80 dark:bg-zinc-900/40">
+                      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">Question topic mix</p>
+                          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            Add one row per theme (you name it). Percentages must total{" "}
+                            <span className="font-semibold text-zinc-700 dark:text-zinc-300">100%</span>. Bucket names must be
+                            unique.
+                          </p>
                         </div>
-                      )}
-                      <div className="flex gap-2">
-                        <input
-                          id="topic-input"
-                          value={topicInput}
-                          onChange={(e) => setTopicInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopic(); } }}
-                          placeholder="e.g. React Hooks"
-                          className="flex-1 rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
-                        />
-                        <button
-                          type="button"
-                          onClick={addTopic}
-                          className="shrink-0 rounded-xl bg-amber-100 px-4 py-3.5 text-sm font-bold text-amber-800 transition hover:bg-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:hover:bg-amber-500/30"
-                        >
-                          + Add
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTopicMixRows((rows) => [...rows, { id: crypto.randomUUID(), name: "", percent: 0 }])
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add bucket
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTopicMixRows([])}
+                            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                          >
+                            Clear all
+                          </button>
+                        </div>
                       </div>
-                      {topics.length === 0 && (
-                        <p className="mt-2 text-xs text-zinc-400">Press Enter or click + Add after typing a topic.</p>
+                      {topicMixRows.length === 0 ? (
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">No buckets yet — click &quot;Add bucket&quot; to define your mix.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {topicMixRows.map((row) => (
+                            <li
+                              key={row.id}
+                              className="flex flex-col gap-2 rounded-lg border border-zinc-200/90 bg-white/90 p-3 sm:flex-row sm:items-end sm:gap-3 dark:border-zinc-700 dark:bg-zinc-900/60"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <label className="mb-1 block text-xs font-semibold text-zinc-600 dark:text-zinc-400">Bucket name</label>
+                                <input
+                                  type="text"
+                                  value={row.name}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setTopicMixRows((rows) => rows.map((r) => (r.id === row.id ? { ...r, name: v } : r)));
+                                  }}
+                                  placeholder="e.g. Guess code output, RAG — naive, LangChain"
+                                  className="w-full rounded-lg border-0 ring-1 ring-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 dark:ring-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+                                />
+                              </div>
+                              <div className="flex items-end gap-2 sm:w-40">
+                                <div className="min-w-0 flex-1">
+                                  <label className="mb-1 block text-xs font-semibold text-zinc-600 dark:text-zinc-400">%</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    value={row.percent}
+                                    onChange={(e) => {
+                                      const v = Number(e.target.value);
+                                      setTopicMixRows((rows) =>
+                                        rows.map((r) => (r.id === row.id ? { ...r, percent: Number.isFinite(v) ? v : 0 } : r)),
+                                      );
+                                    }}
+                                    className="w-full rounded-lg border-0 ring-1 ring-zinc-300 bg-white px-2 py-2 text-sm tabular-nums text-zinc-900 dark:ring-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setTopicMixRows((rows) => rows.filter((r) => r.id !== row.id))}
+                                  className="mb-0.5 rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                                  aria-label="Remove bucket"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
                       )}
+                      <p
+                        className={`mt-3 text-xs font-medium ${topicMixValid ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+                      >
+                        Total: {topicMixSum.toFixed(0)}%
+                        {!topicMixValid && topicMixRows.length > 0
+                          ? " — need non-empty unique names and total 100%."
+                          : null}
+                        {!topicMixValid && topicMixRows.length === 0 ? " — add at least one bucket." : null}
+                      </p>
                     </div>
                     {/* Complexity */}
                     <div>
@@ -640,7 +701,7 @@ export default function AdminPage() {
                     <div className="flex items-center justify-end pt-4 sm:col-span-2 lg:col-span-4 mt-2 border-t border-zinc-100/80 dark:border-zinc-800/60">
                       <button
                         type="submit"
-                        disabled={loading || topics.length === 0}
+                        disabled={loading || !topicMixValid}
                         className="group relative mt-6 inline-flex w-full min-w-[220px] items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-amber-500 px-6 py-3.5 text-sm font-bold text-amber-950 shadow-md shadow-amber-500/20 transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/30 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-400 sm:w-auto"
                       >
                         <div className="absolute inset-0 flex h-full w-full justify-center [transform:skew(-12deg)_translateX(-120%)] group-hover:duration-1000 group-hover:[transform:skew(-12deg)_translateX(120%)]">
