@@ -319,7 +319,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                         className={`flex cursor-pointer items-start gap-4 rounded-xl border-2 px-4 py-3.5 transition-all
                           ${isSelected
                             ? "border-emerald-500 bg-emerald-50 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/30"
-                            : "border-zinc-200 bg-zinc-50/50 hover:border-zinc-300 hover:bg-white dark:border-zinc-700 dark:bg-zinc-800/30 dark:hover:border-zinc-600"
+                            : "border-zinc-200 bg-zinc-50/50 hover:border-zinc-300 hover:bg-zinc-100/70 dark:border-zinc-700 dark:bg-zinc-800/30 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
                           }`}
                       >
                         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors
