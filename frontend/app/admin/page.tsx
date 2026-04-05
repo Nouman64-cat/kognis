@@ -6,8 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   BookOpen,
+  Calendar,
   Check,
+  CheckCircle2,
   ChevronDown,
+  Clock,
   Home,
   KeyRound,
   Layers,
@@ -18,9 +21,12 @@ import {
   Plus,
   RefreshCw,
   Sparkles,
+  Target,
   TrendingUp,
+  Trophy,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
 import { generateExamAdmin, listAttempts, listExams } from "@/lib/api";
@@ -179,6 +185,16 @@ export default function AdminPage() {
     () => exams.reduce((acc, e) => acc + e.total_questions, 0),
     [exams],
   );
+
+  const lastActiveMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    attempts.forEach((a) => {
+      if (!map[a.candidate_email] || new Date(a.created_at) > new Date(map[a.candidate_email])) {
+        map[a.candidate_email] = a.created_at;
+      }
+    });
+    return map;
+  }, [attempts]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -864,397 +880,403 @@ export default function AdminPage() {
 
             {/* Candidates / Attempts */}
             {activeTab === "candidates" && (() => {
-              const filtered = attempts.filter((a) => {
+              // Grouped candidates from stats
+              const candidateList = Object.values(candidateStats).sort((a, b) => b.avg_score - a.avg_score);
+              const filteredCandidates = candidateList.filter((c) => {
                 const q = searchQuery.toLowerCase();
                 return (
-                  a.candidate_name.toLowerCase().includes(q) ||
-                  a.candidate_email.toLowerCase().includes(q) ||
-                  a.exam_topics.join(" ").toLowerCase().includes(q) || (a.exam_title ?? "").toLowerCase().includes(q)
+                  c.candidate_name.toLowerCase().includes(q) ||
+                  c.candidate_email.toLowerCase().includes(q)
                 );
               });
 
-              // Per-candidate panel data
-              const candidateAttempts = selectedCandidateEmail
+              const selectedCStats = selectedCandidateEmail ? candidateStats[selectedCandidateEmail] : null;
+              const selectedCandidateAttempts = selectedCandidateEmail
                 ? attempts.filter((a) => a.candidate_email === selectedCandidateEmail)
                 : [];
-              const cStats = selectedCandidateEmail ? candidateStats[selectedCandidateEmail] : null;
 
-              // SVG ring helper
-              const Ring = ({ pct, size = 96, stroke = 8 }: { pct: number; size?: number; stroke?: number }) => {
+              const Ring = ({ pct, size = 80, stroke = 7, label = "Avg" }: { pct: number; size?: number; stroke?: number; label?: string }) => {
                 const r = (size - stroke) / 2;
                 const circ = 2 * Math.PI * r;
                 const offset = circ - (pct / 100) * circ;
                 const colour = pct >= 90 ? "#10b981" : pct >= 75 ? "#f59e0b" : "#ef4444";
                 return (
-                  <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-zinc-100 dark:text-zinc-800" />
-                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={colour} strokeWidth={stroke}
-                      strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-                      style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-                  </svg>
+                  <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+                    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+                      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-zinc-100 dark:text-zinc-800" />
+                      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={colour} strokeWidth={stroke}
+                        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+                        className="transition-all duration-1000 ease-out" />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-md font-black tabular-nums text-zinc-900 dark:text-zinc-50">{pct.toFixed(0)}%</span>
+                      <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-wider">{label}</span>
+                    </div>
+                  </div>
                 );
               };
 
               return (
-              <section id="candidates" className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative" aria-labelledby="candidates-heading">
-
-                {/* ── Slide-over panel ─────────────────────────────────── */}
-                {selectedCandidateEmail && (
-                  <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
-                    {/* Backdrop */}
-                    <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelectedCandidateEmail(null)} />
-                    {/* Panel */}
-                    <div className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white shadow-2xl dark:bg-zinc-950">
-                      {/* Header */}
-                      <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
-                        <div>
-                          <p className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{cStats?.candidate_name || "Unknown"}</p>
-                          <p className="text-sm text-zinc-500">{selectedCandidateEmail}</p>
+              <section id="candidates" className="animate-in fade-in slide-in-from-bottom-4 duration-700" aria-labelledby="candidates-heading">
+                
+                {/* ── Dashboard Layout ─────────────────────────────────── */}
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-start text-sm">
+                  
+                  {/* ── Left Sidebar: Candidate List ────────────────────── */}
+                  <div className="w-full lg:w-72 shrink-0 flex flex-col gap-4">
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:bg-violet-500/20 dark:text-violet-400">
+                          <Users className="h-4 w-4" />
                         </div>
-                        <button type="button" onClick={() => setSelectedCandidateEmail(null)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700">
-                          <X className="h-5 w-5" />
-                        </button>
+                        <h3 className="font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Candidates</h3>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => void loadAttempts()}
+                        disabled={attemptsLoading}
+                        className="p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 rounded-lg transition-colors dark:hover:bg-zinc-800"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${attemptsLoading ? "animate-spin" : ""}`} />
+                      </button>
+                    </div>
 
-                      <div className="flex-1 space-y-8 px-6 py-6">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <Check className="h-3.5 w-3.5 text-zinc-400 group-focus-within:text-violet-500 transition-colors" />
+                      </div>
+                      <input
+                        type="search"
+                        placeholder="Search…"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-200 bg-white pl-9 pr-3 py-2 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:ring-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+                      />
+                    </div>
 
-                        {/* Big number stat cards */}
-                        <div className="grid grid-cols-3 gap-4">
+                    <div className="flex flex-col gap-1.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+                      {filteredCandidates.map((c, idx) => {
+                        const isSelected = selectedCandidateEmail === c.candidate_email;
+                        const lastActive = lastActiveMap[c.candidate_email];
+                        return (
+                          <button
+                            key={c.candidate_email}
+                            type="button"
+                            onClick={() => setSelectedCandidateEmail(c.candidate_email)}
+                            style={{ animationDelay: `${idx * 20}ms` }}
+                            className={`group flex items-center gap-3 animate-in fade-in slide-in-from-left-2 rounded-xl p-3 text-left transition-all duration-200 ${
+                              isSelected
+                                ? "bg-gradient-to-br from-violet-600 to-indigo-700 text-white shadow-lg shadow-violet-500/20"
+                                : "bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800 ring-1 ring-zinc-200 dark:ring-zinc-800"
+                            }`}
+                          >
+                            <div className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
+                              isSelected ? "bg-white/20 text-white" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800/50"
+                            }`}>
+                              {c.candidate_name.charAt(0).toUpperCase()}
+                              {c.avg_score >= 85 && (
+                                <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className={`truncate text-xs font-bold ${isSelected ? "text-white" : "text-zinc-900 dark:text-zinc-100"}`}>
+                                {c.candidate_name}
+                              </p>
+                              <div className="flex flex-col gap-0.5">
+                                <p className={`truncate text-[10px] font-medium ${isSelected ? "text-white/70" : "text-zinc-400"}`}>
+                                  {c.candidate_email}
+                                </p>
+                                {lastActive && (
+                                  <p className={`truncate text-[9px] font-medium flex items-center gap-1 ${isSelected ? "text-white/50" : "text-zinc-400"}`}>
+                                    <Clock className="h-2 w-2.5" />
+                                    Active {formatDate(lastActive).split('•')[0]}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <span className={`text-[10px] font-black tabular-nums ${
+                                isSelected ? "text-white" : c.avg_score >= 75 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
+                              }`}>
+                                {c.avg_score.toFixed(0)}%
+                              </span>
+                              <div className={`h-1 w-8 overflow-hidden rounded-full ${isSelected ? "bg-white/10" : "bg-zinc-100 dark:bg-zinc-800"}`}>
+                                <div className={`h-full transition-all duration-500 ${isSelected ? "bg-white" : c.avg_score >= 75 ? "bg-emerald-500" : "bg-red-500"}`} style={{ width: `${c.avg_score}%` }} />
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {filteredCandidates.length === 0 && !attemptsLoading && (
+                        <div className="py-12 text-center space-y-3">
+                          <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-zinc-50 dark:bg-zinc-800/50 text-zinc-300">
+                            <Users className="h-4 w-4" />
+                          </div>
+                          <p className="text-[11px] font-medium text-zinc-500">No candidates found</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Right Content: Detail or Global Stats ────────────── */}
+                  <div className="flex-1 min-w-0">
+                    {selectedCandidateEmail && selectedCStats ? (
+                      <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-6">
+                        {/* Detail Header */}
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-lg font-black text-white shadow-md overflow-hidden relative">
+                              <div className="absolute inset-0 bg-white/20 blur-xl translate-y-8" />
+                              {selectedCStats.candidate_name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                                  {selectedCStats.candidate_name}
+                                </h2>
+                                {selectedCStats.pass_rate === 100 && (
+                                  <Trophy className="h-4 w-4 text-amber-500" />
+                                )}
+                              </div>
+                              <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                <Target className="h-3 w-3 text-violet-500" />
+                                {selectedCandidateEmail}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidateEmail(null)}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white/50 backdrop-blur-sm px-4 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-200"
+                          >
+                            <X className="h-3 w-3" />
+                            Return
+                          </button>
+                        </div>
+
+                        {/* Top Stats Cards */}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                           {[
-                            { label: "Avg. Score", value: `${cStats?.avg_score.toFixed(1) || "0.0"}%`, sub: `${cStats?.total_attempts || 0} exam${cStats?.total_attempts !== 1 ? "s" : ""}`, colour: "violet" },
-                            { label: "Best Score", value: `${cStats?.best_score.toFixed(1) || "0.0"}%`, sub: "personal best", colour: "emerald" },
-                            { label: "Pass Rate", value: `${cStats?.pass_rate.toFixed(0) || "0"}%`, sub: "≥75% threshold", colour: "amber" },
+                            { label: "Aggregate average", value: `${selectedCStats.avg_score.toFixed(1)}%`, sub: `${selectedCStats.total_attempts} Assessments`, color: "violet", icon: TrendingUp },
+                            { label: "Personal Record", value: `${selectedCStats.best_score.toFixed(1)}%`, sub: "Peak Performance", color: "emerald", icon: Zap },
+                            { label: "Success Quotient", value: `${selectedCStats.pass_rate.toFixed(0)}%`, sub: "Pass Rate", color: "amber", icon: Trophy },
                           ].map((card) => (
-                            <div key={card.label} className="rounded-2xl border border-zinc-200/80 bg-zinc-50 p-4 dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
-                              <p className={`mt-1.5 text-2xl font-extrabold tabular-nums ${
-                                card.colour === "violet" ? "text-violet-600 dark:text-violet-400" :
-                                card.colour === "emerald" ? "text-emerald-600 dark:text-emerald-400" :
-                                "text-amber-600 dark:text-amber-400"
+                            <div key={card.label} className="group relative rounded-2xl border border-zinc-200 bg-white/60 p-4 shadow-sm backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/60">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                                  card.color === "violet" ? "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400" :
+                                  card.color === "emerald" ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400" :
+                                  "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
+                                }`}>
+                                  <card.icon className="h-4 w-4" />
+                                </div>
+                              </div>
+                              <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">{card.label}</p>
+                              <p className={`mt-1 text-2xl font-black tabular-nums transition-transform group-hover:translate-x-1 ${
+                                card.color === "violet" ? "text-violet-700 dark:text-violet-400" :
+                                card.color === "emerald" ? "text-emerald-700 dark:text-emerald-400" :
+                                "text-amber-700 dark:text-amber-400"
                               }`}>{card.value}</p>
-                              <p className="mt-0.5 text-xs text-zinc-400">{card.sub}</p>
+                              <p className="text-[10px] font-bold text-zinc-500">{card.sub}</p>
                             </div>
                           ))}
                         </div>
 
-                        {/* Score ring + avg spotlight */}
-                        <div className="flex items-center gap-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-                          <div className="relative shrink-0">
-                            <Ring pct={cStats?.avg_score || 0} size={100} stroke={9} />
-                            <div className="absolute inset-0 flex flex-col items-center justify-center">
-                              <span className="text-lg font-black tabular-nums text-zinc-900 dark:text-zinc-50">{(cStats?.avg_score || 0).toFixed(0)}%</span>
+                        {/* Score Summary Visualization */}
+                        <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+                          <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+                            <div className="shrink-0 flex flex-col items-center gap-4">
+                              <Ring pct={selectedCStats.avg_score} size={110} stroke={10} label="Overall" />
+                              <div className="flex gap-2">
+                                <div className="text-center px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl ring-1 ring-emerald-500/10">
+                                  <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-400">{selectedCStats.passed_count} PASS</p>
+                                </div>
+                                <div className="text-center px-3 py-1 bg-red-50 dark:bg-red-500/10 rounded-xl ring-1 ring-red-500/10">
+                                  <p className="text-[10px] font-black text-red-700 dark:text-red-400">{selectedCStats.failed_count} FAIL</p>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Overall Average</p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {cStats?.passed_count || 0} passed&nbsp;·&nbsp;
-                              {cStats?.failed_count || 0} failed
-                            </p>
-                            <div className="mt-3 h-2 w-48 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                              <div className={`h-full rounded-full transition-all ${(cStats?.avg_score || 0) >= 90 ? "bg-emerald-500" : (cStats?.avg_score || 0) >= 75 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${cStats?.avg_score || 0}%` }} />
-                            </div>
-                          </div>
-                        </div>
+                            
+                            <div className="flex-1 space-y-4">
+                              <div className="space-y-1">
+                                <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Detailed Analytics</h3>
+                                <p className="text-xs font-medium text-zinc-500 leading-relaxed">
+                                  Candidate has completed <span className="font-bold text-zinc-900 dark:text-zinc-100">{selectedCStats.total_attempts} exams</span>. Pattern indicates a <span className={`font-bold ${selectedCStats.pass_rate >= 75 ? 'text-emerald-500' : 'text-amber-500'}`}>
+                                    {selectedCStats.pass_rate >= 75 ? 'Strong Proficiency' : 'Developing Mastery'}
+                                  </span>.
+                                </p>
+                              </div>
 
-                        {/* Bar chart of all exams */}
-                        {candidateAttempts.length > 1 && (
-                          <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-                            <p className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Score per Exam</p>
-                            <div className="space-y-3">
-                              {candidateAttempts.map((a, i) => {
-                                const name = a.exam_title ?? a.exam_topics.join(", ");
-                                const colour = a.score_percent >= 90 ? "bg-emerald-500" : a.score_percent >= 75 ? "bg-amber-500" : "bg-red-500";
-                                return (
-                                  <div key={a.attempt_id} className="flex items-center gap-3">
-                                    <span className="w-4 shrink-0 text-right text-xs font-bold text-zinc-400">{i + 1}</span>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="truncate text-xs text-zinc-600 dark:text-zinc-400">{name}</span>
-                                        <span className={`shrink-0 text-xs font-bold tabular-nums ${
-                                          a.score_percent >= 90 ? "text-emerald-600 dark:text-emerald-400" :
-                                          a.score_percent >= 75 ? "text-amber-600 dark:text-amber-400" :
-                                          "text-red-600 dark:text-red-400"
-                                        }`}>{a.score_percent.toFixed(1)}%</span>
-                                      </div>
-                                      <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                                        <div className={`h-full rounded-full transition-all duration-700 ${colour}`}
-                                          style={{ width: `${a.score_percent}%` }} />
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            {/* SVG mini bar chart */}
-                            <div className="mt-5 overflow-hidden rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800/60">
-                              <svg viewBox={`0 0 ${candidateAttempts.length * 40} 80`} className="w-full" preserveAspectRatio="none" style={{ height: 80 }}>
-                                {candidateAttempts.map((a, i) => {
-                                  const h = (a.score_percent / 100) * 72;
-                                  const y = 80 - h;
-                                  const colour = a.score_percent >= 90 ? "#10b981" : a.score_percent >= 75 ? "#f59e0b" : "#ef4444";
-                                  return (
-                                    <g key={a.attempt_id}>
-                                      <rect x={i * 40 + 6} y={y} width={28} height={h} rx={4} fill={colour} opacity={0.85} />
-                                      <text x={i * 40 + 20} y={76} textAnchor="middle" fontSize={9} fill="#71717a">{i + 1}</text>
-                                    </g>
-                                  );
-                                })}
-                                {/* 60% line */}
-                                <line x1={0} y1={80 - 0.6 * 72} x2={candidateAttempts.length * 40} y2={80 - 0.6 * 72}
-                                  stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1} opacity={0.7} />
-                                {/* 80% line */}
-                                <line x1={0} y1={80 - 0.8 * 72} x2={candidateAttempts.length * 40} y2={80 - 0.8 * 72}
-                                  stroke="#10b981" strokeDasharray="4 3" strokeWidth={1} opacity={0.7} />
-                              </svg>
-                              <div className="mt-2 flex gap-4 text-xs text-zinc-400">
-                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-emerald-500" />≥80% pass</span>
-                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-amber-400" />≥75% pass</span>
-                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-red-500" />&lt;75% fail</span>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40">
+                                  <p className="text-[9px] font-black uppercase text-zinc-400 mb-1">Recent Activity</p>
+                                  <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">
+                                    {selectedCandidateAttempts[0] ? formatDate(selectedCandidateAttempts[0].created_at).split('•')[0] : 'None'}
+                                  </p>
+                                </div>
+                                <div className="p-3 rounded-2xl bg-zinc-50 dark:bg-zinc-800/40">
+                                  <p className="text-[9px] font-black uppercase text-zinc-400 mb-1">Top Subject</p>
+                                  <p className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 truncate">
+                                    {selectedCandidateAttempts[0]?.exam_topics[0] || 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                  <span className="text-zinc-400 uppercase tracking-tighter">Success Trajectory</span>
+                                  <span className="text-zinc-900 dark:text-zinc-50">{selectedCStats.pass_rate}% Accuracy</span>
+                                </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                                   <div className={`h-full transition-all duration-1000 ${selectedCStats.pass_rate >= 75 ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${selectedCStats.pass_rate}%` }} />
+                                </div>
                               </div>
                             </div>
                           </div>
-                        )}
+                        </div>
 
-                        {/* Per-exam detail cards */}
-                        <div>
-                          <p className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Exam Breakdown</p>
-                          <div className="space-y-3">
-                            {candidateAttempts.map((a) => {
-                              const pct = a.score_percent;
-                              const passed = pct >= 75;
-                              return (
-                                <div key={a.attempt_id}
-                                  className={`rounded-xl border p-4 ${
-                                    passed ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
-                                           : "border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/20"
-                                  }`}>
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">
-                                        {a.exam_title ?? a.exam_topics.join(", ")}
-                                      </p>
-                                      <p className="mt-0.5 text-xs capitalize text-zinc-500">
-                                        {formatDate(a.created_at)} · {a.exam_complexity}{a.duration_minutes ? ` · ${a.duration_minutes} min` : ""}
-                                      </p>
-                                    </div>
-                                    <div className="flex shrink-0 flex-col items-end">
-                                      <span className={`text-lg font-black tabular-nums ${
-                                        pct >= 90 ? "text-emerald-600 dark:text-emerald-400" :
-                                        pct >= 75 ? "text-amber-600 dark:text-amber-400" :
-                                        "text-red-600 dark:text-red-400"
-                                      }`}>{pct.toFixed(1)}%</span>
-                                      <span className={`text-xs font-semibold ${
-                                        passed ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-                                      }`}>{passed ? "PASSED" : "FAILED"}</span>
-                                    </div>
-                                  </div>
-                                  <div className="mt-3 flex items-center gap-3">
-                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
-                                      <div className={`h-full rounded-full ${
-                                        pct >= 90 ? "bg-emerald-500" : pct >= 75 ? "bg-amber-500" : "bg-red-500"
-                                      }`} style={{ width: `${pct}%` }} />
-                                    </div>
-                                    <span className="shrink-0 text-xs text-zinc-500">{a.correct_count}/{a.total_questions} correct</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                        {/* Breakdown Table */}
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                          <div className="flex items-center justify-between bg-zinc-50/50 px-5 py-3 dark:bg-zinc-900/40 text-[11px] font-bold">
+                             <h3 className="text-zinc-900 dark:text-zinc-50 font-black tracking-tight">Exam Narrative</h3>
+                             <span className="text-zinc-400">{selectedCandidateAttempts.length} Records</span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-[11px]">
+                              <thead>
+                                <tr className="text-zinc-400 border-b border-zinc-100 dark:border-zinc-800 font-bold uppercase tracking-tighter">
+                                  <th className="px-5 py-3">Assessment Context</th>
+                                  <th className="px-5 py-3">Timeline</th>
+                                  <th className="px-5 py-3 text-right">Result</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                {selectedCandidateAttempts.map((a) => {
+                                  const pct = a.score_percent;
+                                  const passed = pct >= 75;
+                                  return (
+                                    <tr key={a.attempt_id} className="group hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors">
+                                      <td className="px-5 py-3">
+                                        <div className="flex items-center gap-2">
+                                           <div className={`h-1.5 w-1.5 rounded-full ${passed ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                           <p className="font-bold text-zinc-900 dark:text-zinc-100 truncate max-w-[160px]">
+                                             {a.exam_title ?? a.exam_topics.join(", ")}
+                                           </p>
+                                        </div>
+                                      </td>
+                                      <td className="px-5 py-3 text-zinc-500 tabular-nums">
+                                        {formatDate(a.created_at).split('•')[0]}
+                                      </td>
+                                      <td className="px-5 py-3 text-right">
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-black ring-1 ring-inset ${
+                                          passed ? "bg-emerald-50 text-emerald-600 ring-emerald-500/20" : "bg-red-50 text-red-600 ring-red-500/20"
+                                        }`}>
+                                          {pct.toFixed(0)}%
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="animate-in fade-in duration-1000 space-y-8">
+                        {/* Global Platform State */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-700 text-white shadow-md">
+                            <TrendingUp className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                              Platform Analytics
+                            </h2>
+                            <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest leading-none mt-1">Global Candidate Diagnostics</p>
                           </div>
                         </div>
 
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Page header ──────────────────────────────────────── */}
-                <div className="mb-8 flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-500/20 shadow-sm dark:bg-violet-500/10 dark:text-violet-400 dark:ring-violet-500/30">
-                      <Users className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h2 id="candidates-heading" className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                        Candidates &amp; Results
-                      </h2>
-                      <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                        Click any row to view a full performance breakdown.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void loadAttempts()}
-                    disabled={attemptsLoading}
-                    className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${attemptsLoading ? "animate-spin" : ""}`} />
-                    Refresh
-                  </button>
-                </div>
-
-                {/* ── Enhanced stat cards ───────────────────────────────── */}
-                {!attemptsLoading && globalStats && attempts.length > 0 && (
-                  <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                    {[
-                      { label: "Candidates", value: globalStats.unique_candidates, suffix: "", colour: "violet", glow: "bg-violet-500/10" },
-                      { label: "Total Attempts", value: globalStats.total_attempts, suffix: "", colour: "blue", glow: "bg-blue-500/10" },
-                      { label: "Avg. Score", value: globalStats.avg_score.toFixed(1), suffix: "%", colour: "indigo", glow: "bg-indigo-500/10" },
-                      { label: "Top Score", value: globalStats.top_score.toFixed(1), suffix: "%", colour: "emerald", glow: "bg-emerald-500/10" },
-                      { label: "Pass Rate", value: globalStats.pass_rate.toFixed(0), suffix: "%", colour: "amber", glow: "bg-amber-500/10" },
-                    ].map((card) => (
-                      <div key={card.label} className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                        <div className={`absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full ${card.glow} blur-2xl transition-transform duration-700 group-hover:scale-150`} />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
-                        <p className="mt-2 text-4xl font-extrabold tabular-nums text-zinc-900 dark:text-zinc-50">
-                          {card.value}<span className="ml-1 text-2xl font-bold text-zinc-400">{card.suffix}</span>
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* ── Score distribution mini-chart (global) ──────────── */}
-                {!attemptsLoading && globalStats && attempts.length > 1 && (() => {
-                  const buckets = [
-                    { label: "0–20", min: 0, count: globalStats.score_distribution["0–20"] || 0 },
-                    { label: "21–40", min: 21, count: globalStats.score_distribution["21–40"] || 0 },
-                    { label: "41–60", min: 41, count: globalStats.score_distribution["41–60"] || 0 },
-                    { label: "61–80", min: 61, count: globalStats.score_distribution["61–80"] || 0 },
-                    { label: "81–100", min: 81, count: globalStats.score_distribution["81–100"] || 0 },
-                  ];
-                  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
-                  return (
-                    <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                      <p className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Score Distribution</p>
-                      <div className="flex items-end gap-2" style={{ height: 80 }}>
-                        {buckets.map((b) => {
-                          const h = Math.round((b.count / maxCount) * 72);
-                          const colour = b.min >= 81 ? "bg-emerald-500" : b.min >= 61 ? "bg-teal-500" : b.min >= 41 ? "bg-amber-500" : b.min >= 21 ? "bg-orange-500" : "bg-red-500";
-                          return (
-                            <div key={b.label} className="flex flex-1 flex-col items-center gap-1">
-                              {b.count > 0 && <span className="text-xs font-bold text-zinc-500">{b.count}</span>}
-                              <div className={`w-full rounded-t-md transition-all ${colour}`} style={{ height: h || 4 }} />
-                              <span className="text-xs text-zinc-400">{b.label}</span>
+                        {!attemptsLoading && globalStats ? (
+                          <>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                              {[
+                                { label: "Cohort", value: globalStats.unique_candidates, color: "violet", icon: Users },
+                                { label: "Volume", value: globalStats.total_attempts, color: "blue", icon: Layers },
+                                { label: "Mean Accuracy", value: `${globalStats.avg_score.toFixed(1)}%`, color: "indigo", icon: Target },
+                                { label: "Peak Performance", value: `${globalStats.top_score.toFixed(1)}%`, color: "emerald", icon: Zap },
+                                { label: "Pass Rate", value: `${globalStats.pass_rate.toFixed(0)}%`, color: "amber", icon: Trophy },
+                              ].map((card) => (
+                                <div key={card.label} className="group relative rounded-2xl border border-zinc-200 bg-white/50 p-4 shadow-sm backdrop-blur-sm transition-all hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/50">
+                                  <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">{card.label}</p>
+                                  <p className="mt-1 text-xl font-black tabular-nums text-zinc-900 dark:text-zinc-50">{card.value}</p>
+                                </div>
+                              ))}
                             </div>
-                          );
-                        })}
+
+                            <div className="rounded-3xl border border-zinc-200 bg-white/50 p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
+                              <div className="flex items-center gap-2 mb-8">
+                                <TrendingUp className="h-4 w-4 text-zinc-400" />
+                                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-50">Proficiency Distribution</h3>
+                              </div>
+                              <div className="flex items-end gap-3 h-32">
+                                {[
+                                  { label: "0–20", count: globalStats.score_distribution["0–20"] || 0, color: "bg-red-500" },
+                                  { label: "21–40", count: globalStats.score_distribution["21–40"] || 0, color: "bg-orange-500" },
+                                  { label: "41–60", count: globalStats.score_distribution["41–60"] || 0, color: "bg-amber-500" },
+                                  { label: "61–80", count: globalStats.score_distribution["61–80"] || 0, color: "bg-teal-500" },
+                                  { label: "81–100", count: globalStats.score_distribution["81–100"] || 0, color: "bg-emerald-500" },
+                                ].map((b) => {
+                                  const max = Math.max(...Object.values(globalStats.score_distribution), 1);
+                                  const h = (b.count / max) * 100;
+                                  return (
+                                    <div key={b.label} className="flex-1 flex flex-col justify-end gap-2 group">
+                                      {b.count > 0 && <span className="text-[9px] font-bold text-zinc-500 text-center">{b.count}</span>}
+                                      <div className={`w-full rounded-lg min-h-[2px] transition-all duration-1000 ease-out group-hover:opacity-80 shadow-md ${b.color}`} style={{ height: `${h}%` }} />
+                                      <span className="text-[9px] font-black text-zinc-400 text-center uppercase tracking-tighter">{b.label}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        ) : attemptsLoading ? (
+                          <div className="py-20 text-center">
+                            <RefreshCw className="h-8 w-8 animate-spin text-violet-500 mx-auto opacity-50 mb-3" />
+                            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Hydrating data nodes...</p>
+                          </div>
+                        ) : (
+                          <div className="py-20 text-center rounded-3xl border-2 border-dashed border-zinc-100 dark:border-zinc-800">
+                             <Users className="h-10 w-10 text-zinc-200 dark:text-zinc-800 mx-auto mb-3" />
+                             <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest text-zinc-300">Awaiting assessment cycles</p>
+                          </div>
+                        )}
+                        
+                        {/* Empty selection helper with Glassmorphism */}
+                        {!selectedCandidateEmail && !attemptsLoading && filteredCandidates.length > 0 && (
+                          <div className="group relative overflow-hidden rounded-3xl bg-indigo-600 p-6 text-white shadow-xl shadow-indigo-500/20">
+                                <div className="relative flex items-start gap-4">
+                                  <Sparkles className="h-6 w-6 mt-1 flex-shrink-0" />
+                                  <div className="space-y-1">
+                                    <h4 className="text-lg font-bold">Expand Your Intelligence</h4>
+                                    <p className="text-xs font-medium text-indigo-100 leading-relaxed">
+                                      Select any individual candidate from the control panel to access their deep-layer performance profile, milestone trends, and competency diagnostics.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <p className="mt-1 text-xs text-zinc-400">Number of attempts per score range</p>
                     </div>
-                  );
-                })()}
-
-                {/* ── Search ───────────────────────────────────────────── */}
-                {attempts.length > 0 && (
-                  <div className="mb-4">
-                    <input
-                      type="search"
-                      placeholder="Search by name, email or topic…"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3 text-zinc-900 shadow-sm transition placeholder:text-zinc-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:focus:bg-zinc-900 sm:w-80"
-                    />
-                  </div>
-                )}
-
-                {attemptsError && (
-                  <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
-                    {attemptsError}
-                  </p>
-                )}
-
-                {attemptsLoading && (
-                  <div className="flex items-center justify-center gap-2 py-16 text-sm text-zinc-500">
-                    <RefreshCw className="h-4 w-4 animate-spin" /> Loading attempts…
-                  </div>
-                )}
-
-                {!attemptsLoading && !attemptsError && attempts.length === 0 && (
-                  <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/50 py-16 text-center dark:border-zinc-700 dark:bg-zinc-800/30">
-                    <Users className="h-12 w-12 text-zinc-300 dark:text-zinc-600" />
-                    <p className="text-base font-semibold text-zinc-600 dark:text-zinc-400">No attempts yet</p>
-                    <p className="max-w-xs text-sm text-zinc-500">Once candidates complete exams, their results will appear here.</p>
-                  </div>
-                )}
-
-                {/* ── Attempts table ─────────────────────────────────── */}
-                {filtered.length > 0 && (
-                  <div className="overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm dark:border-zinc-700">
-                    <table className="w-full min-w-[700px] text-left text-sm">
-                      <thead className="border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-700 dark:bg-zinc-800/50">
-                        <tr>
-                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Candidate</th>
-                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 sm:table-cell dark:text-zinc-300">Email</th>
-                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Exam</th>
-                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Attempted</th>
-                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 md:table-cell dark:text-zinc-300">Level</th>
-                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Score</th>
-                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Correct / Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                        {filtered.map((a) => {
-                          const pct = a.score_percent;
-                          const scoreColor =
-                            pct >= 90 ? "text-emerald-600 dark:text-emerald-400" :
-                            pct >= 75 ? "text-amber-600 dark:text-amber-400" :
-                            "text-red-600 dark:text-red-400";
-                          const barColor =
-                            pct >= 90 ? "bg-emerald-500" :
-                            pct >= 75 ? "bg-amber-500" :
-                            "bg-red-500";
-                          const isSelected = selectedCandidateEmail === a.candidate_email;
-                          return (
-                            <tr key={a.attempt_id}
-                              onClick={() => setSelectedCandidateEmail(a.candidate_email)}
-                              className={`cursor-pointer transition ${
-                                isSelected
-                                  ? "bg-violet-50 dark:bg-violet-950/30"
-                                  : "bg-white hover:bg-zinc-50/80 dark:bg-zinc-900 dark:hover:bg-zinc-800/60"
-                              }`}>
-                              <td className="px-5 py-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
-                                    {a.candidate_name.charAt(0).toUpperCase()}
-                                  </div>
-                                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{a.candidate_name}</span>
-                                </div>
-                              </td>
-                              <td className="hidden px-5 py-4 text-zinc-500 sm:table-cell dark:text-zinc-400">{a.candidate_email}</td>
-                              <td className="max-w-[180px] px-5 py-4">
-                                <span className="line-clamp-1 font-medium text-zinc-800 dark:text-zinc-200">{a.exam_title ?? a.exam_topics.join(", ")}</span>
-                              </td>
-                              <td className="hidden px-5 py-4 whitespace-nowrap text-xs text-zinc-500 lg:table-cell dark:text-zinc-400">
-                                {formatDate(a.created_at)}
-                              </td>
-                              <td className="hidden px-5 py-4 capitalize text-zinc-500 md:table-cell dark:text-zinc-400">{a.exam_complexity}</td>
-                              <td className="px-5 py-4">
-                                <div className="flex flex-col gap-1.5">
-                                  <span className={`text-base font-extrabold tabular-nums ${scoreColor}`}>{pct.toFixed(1)}%</span>
-                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
-                                    <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="hidden px-5 py-4 tabular-nums text-zinc-500 lg:table-cell dark:text-zinc-400">{a.correct_count} / {a.total_questions}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {!attemptsLoading && filtered.length === 0 && attempts.length > 0 && (
-                  <p className="mt-4 text-sm text-zinc-500">No results match your search.</p>
-                )}
-              </section>
-              );
-            })()}
-          </div>
+                  </section>
+                );
+              })()}
+            </div>
         </main>
       </div>
     </div>
