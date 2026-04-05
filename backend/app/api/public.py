@@ -26,6 +26,8 @@ async def list_exams(session: AsyncSession = Depends(db_session)) -> list[ExamSu
                 complexity=e.complexity,
                 total_questions=e.total_questions,
                 duration_minutes=e.duration_minutes,
+                scheduled_for=e.scheduled_for,
+                created_at=e.created_at,
             )
         )
     return out
@@ -80,6 +82,8 @@ async def get_exam_questions(
             complexity=exam.complexity,
             total_questions=exam.total_questions,
             duration_minutes=exam.duration_minutes,
+            scheduled_for=exam.scheduled_for,
+            created_at=exam.created_at,
         ),
         questions=[
             QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in questions

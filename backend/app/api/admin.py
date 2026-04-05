@@ -55,6 +55,7 @@ async def generate_exam(
         complexity=body.complexity.strip(),
         total_questions=len(payload.questions),
         duration_minutes=body.duration_minutes,
+        scheduled_for=body.scheduled_for,
     )
     session.add(exam)
     await session.flush()
@@ -80,6 +81,8 @@ async def generate_exam(
         complexity=exam.complexity,
         total_questions=exam.total_questions,
         duration_minutes=exam.duration_minutes,
+        scheduled_for=exam.scheduled_for,
+        created_at=exam.created_at,
     )
 
 
@@ -123,6 +126,8 @@ async def list_attempts(
                 score_percent=round(a.final_score, 1),
                 correct_count=correct,
                 duration_minutes=a.exam.duration_minutes,
+                scheduled_for=a.exam.scheduled_for,
+                created_at=a.created_at,
             )
         )
     PASS_THRESHOLD_PERCENT = 60.0

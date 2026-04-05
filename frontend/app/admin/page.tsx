@@ -26,6 +26,13 @@ import { generateExamAdmin, listAttempts, listExams } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
 import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics } from "@/lib/types";
 
+function formatDate(isoStr: string) {
+  const d = new Date(isoStr);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + 
+         " • " + 
+         d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 function scrollPageToSection(id: string) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -68,6 +75,7 @@ export default function AdminPage() {
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
   const [durationMinutes, setDurationMinutes] = useState<number | "">("");
+  const [scheduledTime, setScheduledTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -176,6 +184,7 @@ export default function AdminPage() {
         complexity: complexity.trim(),
         total_questions: totalQuestions,
         duration_minutes: durationMinutes !== "" ? durationMinutes : undefined,
+        scheduled_for: scheduledTime ? new Date(scheduledTime).toISOString() : null,
       });
       setCopied(false);
       setSuccess(res);
@@ -183,6 +192,7 @@ export default function AdminPage() {
       setTopics([]);
       setTopicInput("");
       setDurationMinutes("");
+      setScheduledTime("");
       void loadExams();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -598,7 +608,7 @@ export default function AdminPage() {
                       />
                     </div>
                     {/* Duration */}
-                    <div className="sm:col-span-2">
+                    <div>
                       <label htmlFor="duration" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
                         Duration <span className="font-normal text-zinc-400">(minutes, optional)</span>
                       </label>
@@ -611,6 +621,20 @@ export default function AdminPage() {
                         onChange={(e) => setDurationMinutes(e.target.value === "" ? "" : Number(e.target.value))}
                         placeholder="No time limit"
                         className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                      />
+                    </div>
+                    {/* Scheduled Time */}
+                    <div>
+                      <label htmlFor="scheduled" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Scheduled Time <span className="font-normal text-zinc-400">(optional)</span>
+                      </label>
+                      <input
+                        id="scheduled"
+                        type="datetime-local"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                        style={{ colorScheme: "dark" }}
                       />
                     </div>
                     <div className="flex items-center justify-end pt-4 sm:col-span-2 lg:col-span-4 mt-2 border-t border-zinc-100/80 dark:border-zinc-800/60">
@@ -712,6 +736,9 @@ export default function AdminPage() {
                           <th className="hidden px-4 py-3 font-medium text-zinc-700 md:table-cell dark:text-zinc-300">
                             ID
                           </th>
+                          <th className="hidden px-4 py-3 font-medium text-zinc-700 lg:table-cell dark:text-zinc-300">
+                            Scheduled / Created
+                          </th>
                           <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Invite</th>
                         </tr>
                       </thead>
@@ -731,6 +758,15 @@ export default function AdminPage() {
                               </td>
                               <td className="hidden px-4 py-3 font-mono text-xs text-zinc-500 md:table-cell">
                                 {exam.id}
+                              </td>
+                              <td className="hidden px-4 py-3 whitespace-nowrap text-xs text-zinc-500 lg:table-cell dark:text-zinc-400">
+                                {exam.scheduled_for ? (
+                                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                    {formatDate(exam.scheduled_for)}
+                                  </span>
+                                ) : (
+                                  formatDate(exam.created_at)
+                                )}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
@@ -938,7 +974,9 @@ export default function AdminPage() {
                                       <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">
                                         {a.exam_title ?? a.exam_topics.join(", ")}
                                       </p>
-                                      <p className="mt-0.5 text-xs capitalize text-zinc-500">{a.exam_complexity}{a.duration_minutes ? ` · ${a.duration_minutes} min` : ""}</p>
+                                      <p className="mt-0.5 text-xs capitalize text-zinc-500">
+                                        {formatDate(a.created_at)} · {a.exam_complexity}{a.duration_minutes ? ` · ${a.duration_minutes} min` : ""}
+                                      </p>
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end">
                                       <span className={`text-lg font-black tabular-nums ${
@@ -1090,6 +1128,7 @@ export default function AdminPage() {
                           <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Candidate</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 sm:table-cell dark:text-zinc-300">Email</th>
                           <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Exam</th>
+                          <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Attempted</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 md:table-cell dark:text-zinc-300">Level</th>
                           <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Score</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Correct / Total</th>
@@ -1126,6 +1165,9 @@ export default function AdminPage() {
                               <td className="hidden px-5 py-4 text-zinc-500 sm:table-cell dark:text-zinc-400">{a.candidate_email}</td>
                               <td className="max-w-[180px] px-5 py-4">
                                 <span className="line-clamp-1 font-medium text-zinc-800 dark:text-zinc-200">{a.exam_title ?? a.exam_topics.join(", ")}</span>
+                              </td>
+                              <td className="hidden px-5 py-4 whitespace-nowrap text-xs text-zinc-500 lg:table-cell dark:text-zinc-400">
+                                {formatDate(a.created_at)}
                               </td>
                               <td className="hidden px-5 py-4 capitalize text-zinc-500 md:table-cell dark:text-zinc-400">{a.exam_complexity}</td>
                               <td className="px-5 py-4">

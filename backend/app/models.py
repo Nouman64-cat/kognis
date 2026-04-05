@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, DateTime, UniqueConstraint
+from sqlalchemy import Column, DateTime, UniqueConstraint, func
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -49,6 +49,14 @@ class Exam(SQLModel, table=True):
     complexity: str = Field(max_length=64, index=True)
     total_questions: int = Field(ge=0)
     duration_minutes: int | None = Field(default=None, nullable=True)
+    scheduled_for: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
 
     questions: list["Question"] = Relationship(back_populates="exam", cascade_delete=True)
     attempts: list["ExamAttempt"] = Relationship(back_populates="exam", cascade_delete=True)
@@ -75,6 +83,10 @@ class ExamAttempt(SQLModel, table=True):
     candidate_id: int = Field(foreign_key="candidate.id", index=True)
     exam_id: int = Field(foreign_key="exam.id", index=True)
     final_score: float = Field(ge=0.0, le=100.0, description="Percentage correct")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), nullable=False),
+    )
 
     candidate: Candidate | None = Relationship(back_populates="exam_attempts")
     exam: Exam | None = Relationship(back_populates="attempts")

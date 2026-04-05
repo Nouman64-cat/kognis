@@ -101,6 +101,7 @@ export async function generateExamAdmin(body: {
   complexity: string;
   total_questions: number;
   duration_minutes?: number;
+  scheduled_for?: string | null;
 }): Promise<AdminGenerateResponse> {
   const token = getAdminToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

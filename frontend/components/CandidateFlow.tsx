@@ -129,7 +129,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     try {
       const data = await getExamQuestions(examId, emailVal.trim().toLowerCase());
       setBundle(data);
-      setSelectedExam({ id: data.exam.id, title: data.exam.title, topics: data.exam.topics, complexity: data.exam.complexity, total_questions: data.exam.total_questions, duration_minutes: data.exam.duration_minutes });
+      setSelectedExam({ id: data.exam.id, title: data.exam.title, topics: data.exam.topics, complexity: data.exam.complexity, total_questions: data.exam.total_questions, duration_minutes: data.exam.duration_minutes, scheduled_for: data.exam.scheduled_for, created_at: data.exam.created_at });
       setChoices({});
       setCurrentQIdx(0);
       setStep("take");

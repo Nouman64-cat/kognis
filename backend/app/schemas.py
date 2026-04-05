@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -25,6 +27,7 @@ class AdminGenerateExamRequest(BaseModel):
     complexity: str = Field(min_length=1, max_length=64)
     total_questions: int = Field(ge=1, le=100)
     duration_minutes: int | None = Field(default=None, ge=1, le=300)
+    scheduled_for: datetime | None = Field(default=None)
 
 
 class AdminGenerateExamResponse(BaseModel):
@@ -34,6 +37,8 @@ class AdminGenerateExamResponse(BaseModel):
     complexity: str
     total_questions: int
     duration_minutes: int | None
+    scheduled_for: datetime | None
+    created_at: datetime
 
 
 class CandidateRegisterRequest(BaseModel):
@@ -54,6 +59,8 @@ class ExamSummary(BaseModel):
     complexity: str
     total_questions: int
     duration_minutes: int | None
+    scheduled_for: datetime | None
+    created_at: datetime
 
 
 class QuestionPublic(BaseModel):
@@ -115,6 +122,8 @@ class AttemptRow(BaseModel):
     score_percent: float
     correct_count: int
     duration_minutes: int | None
+    scheduled_for: datetime | None
+    created_at: datetime
 
 
 class GlobalAnalytics(BaseModel):

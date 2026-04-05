@@ -5,6 +5,8 @@ export type ExamSummary = {
   complexity: string;
   total_questions: number;
   duration_minutes: number | null;
+  scheduled_for: string | null;
+  created_at: string;
 };
 
 export type CandidatePublic = {
@@ -31,6 +33,8 @@ export type AdminGenerateResponse = {
   complexity: string;
   total_questions: number;
   duration_minutes: number | null;
+  scheduled_for: string | null;
+  created_at: string;
 };
 
 export type SubmitExamResponse = {
@@ -64,6 +68,8 @@ export type AttemptRow = {
   score_percent: number;
   correct_count: number;
   duration_minutes: number | null;
+  scheduled_for: string | null;
+  created_at: string;
 };
 
 export type GlobalAnalytics = {
