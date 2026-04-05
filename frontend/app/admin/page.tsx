@@ -28,9 +28,10 @@ import {
   Zap,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
-import { generateExamAdmin, listAttempts, listExams } from "@/lib/api";
+import { generateExamAdmin, listAttempts, listExams, listQuestions } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
-import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics } from "@/lib/types";
+import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics, PaginatedQuestionsResponse } from "@/lib/types";
+import { MarkdownBlock } from "@/components/MarkdownBlock";
 
 function formatDate(isoStr: string) {
   const d = new Date(isoStr);
@@ -52,19 +53,25 @@ function SidebarSectionButton({
   icon: Icon,
   label,
   onGoTo,
+  isActive,
 }: {
   sectionId: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onGoTo: (id: string) => void;
+  isActive?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={() => onGoTo(sectionId)}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-zinc-300 transition hover:bg-zinc-800 hover:text-white"
+      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
+        isActive
+          ? "bg-zinc-800 text-white font-semibold"
+          : "text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+      }`}
     >
-      <Icon className="h-4 w-4 shrink-0 opacity-80" />
+      <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-emerald-400 opacity-100" : "opacity-80"}`} />
       {label}
     </button>
   );
@@ -73,7 +80,7 @@ function SidebarSectionButton({
 export default function AdminPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates" | "questions">("overview");
   // Create exam form state
   const [examTitle, setExamTitle] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
@@ -103,6 +110,10 @@ export default function AdminPage() {
   const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidateEmail, setSelectedCandidateEmail] = useState<string | null>(null);
+  const [questionsData, setQuestionsData] = useState<PaginatedQuestionsResponse | null>(null);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
+  const [questionsPage, setQuestionsPage] = useState(1);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
@@ -116,7 +127,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, "");
-    if (hash && ["overview", "create", "library", "candidates"].includes(hash)) {
+    if (hash && ["overview", "create", "library", "candidates", "questions"].includes(hash)) {
       setActiveTab(hash as any);
     }
   }, []);
@@ -162,6 +173,25 @@ export default function AdminPage() {
       void loadAttempts();
     }
   }, [activeTab, attempts.length, attemptsLoading, loadAttempts]);
+
+  const loadQuestions = useCallback(async (page: number) => {
+    setQuestionsLoading(true);
+    setQuestionsError(null);
+    try {
+      const data = await listQuestions(page, 10);
+      setQuestionsData(data);
+    } catch (e) {
+      setQuestionsError(e instanceof Error ? e.message : "Could not load questions");
+    } finally {
+      setQuestionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "questions") {
+      void loadQuestions(questionsPage);
+    }
+  }, [activeTab, questionsPage, loadQuestions]);
 
   const inviteUrl = useMemo(() => {
     if (!success) return "";
@@ -245,7 +275,7 @@ export default function AdminPage() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-200 ease-out lg:static lg:z-0 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:z-0 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -277,10 +307,11 @@ export default function AdminPage() {
           <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             On this page
           </p>
-          <SidebarSectionButton sectionId="overview" icon={Layers} label="Overview" onGoTo={goToSection} />
-          <SidebarSectionButton sectionId="create" icon={Sparkles} label="Create exam" onGoTo={goToSection} />
-          <SidebarSectionButton sectionId="library" icon={Library} label="Exam library" onGoTo={goToSection} />
-          <SidebarSectionButton sectionId="candidates" icon={Users} label="Candidates" onGoTo={goToSection} />
+          <SidebarSectionButton sectionId="overview" icon={Layers} label="Overview" onGoTo={goToSection} isActive={activeTab === "overview"} />
+          <SidebarSectionButton sectionId="create" icon={Sparkles} label="Create exam" onGoTo={goToSection} isActive={activeTab === "create"} />
+          <SidebarSectionButton sectionId="library" icon={Library} label="Exam library" onGoTo={goToSection} isActive={activeTab === "library"} />
+          <SidebarSectionButton sectionId="questions" icon={BookOpen} label="Questions library" onGoTo={goToSection} isActive={activeTab === "questions"} />
+          <SidebarSectionButton sectionId="candidates" icon={Users} label="Candidates" onGoTo={goToSection} isActive={activeTab === "candidates"} />
 
           <div className="my-3 border-t border-zinc-800" />
 
@@ -863,6 +894,137 @@ export default function AdminPage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            </section>
+            )}
+
+            {/* Questions Library */}
+            {activeTab === "questions" && (
+            <section
+              id="questions"
+              className="animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              aria-labelledby="questions-heading"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-zinc-400" />
+                  <div>
+                    <h2 id="questions-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                      Questions library
+                    </h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      All questions available across exams.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadQuestions(questionsPage)}
+                  disabled={questionsLoading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                >
+                  <RefreshCw className={`h-4 w-4 ${questionsLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="p-5">
+                {questionsError && (
+                  <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
+                    {questionsError}
+                  </p>
+                )}
+
+                {questionsLoading && !questionsData && !questionsError && (
+                  <div className="flex items-center justify-center gap-2 py-12 text-sm text-zinc-500">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading questions…
+                  </div>
+                )}
+
+                {!questionsLoading && !questionsError && questionsData?.items.length === 0 && (
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 py-12 text-center dark:border-zinc-700 dark:bg-zinc-800/30">
+                    <BookOpen className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
+                    <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">No questions yet</p>
+                    <p className="max-w-sm text-xs text-zinc-500">
+                      Generate an exam to seed the questions library.
+                    </p>
+                  </div>
+                )}
+
+                {questionsData && questionsData.items.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-4">
+                      {questionsData.items.map((q) => (
+                        <div key={q.id} className="flex flex-col rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                          <div className="mb-4 flex items-start justify-between gap-2">
+                            <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">
+                              {q.category || q.exam_topic}
+                            </span>
+                            <span className="text-xs text-zinc-400">ID: {q.id}</span>
+                          </div>
+                          <div className="mb-5 flex-1 text-sm text-zinc-800 dark:text-zinc-200">
+                            <MarkdownBlock content={q.text} />
+                          </div>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            Options
+                          </div>
+                          <ul className="grid gap-3 sm:grid-cols-2">
+                            {q.options.map((opt, i) => (
+                              <li
+                                key={i}
+                                className={`rounded-lg border px-4 py-3 text-sm ${
+                                  i === q.correct_answer
+                                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-200"
+                                    : "border-zinc-200 bg-zinc-50/50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/30 dark:text-zinc-300"
+                                }`}
+                              >
+                                {i === q.correct_answer && (
+                                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                                    Correct Answer
+                                  </span>
+                                )}
+                                <MarkdownBlock content={opt} className="prose-sm" />
+                              </li>
+                            ))}
+                          </ul>
+                          {q.explanation && (
+                            <div className="mt-5 rounded-lg bg-zinc-50 p-4 dark:bg-zinc-800/50">
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+                                Explanation
+                              </p>
+                              <MarkdownBlock content={q.explanation} className="prose-sm mt-1" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Showing {(questionsData.page - 1) * questionsData.page_size + 1} to{" "}
+                        {Math.min(questionsData.page * questionsData.page_size, questionsData.total)} of{" "}
+                        <span className="font-medium text-zinc-900 dark:text-zinc-50">{questionsData.total}</span> questions
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setQuestionsPage(p => Math.max(1, p - 1))}
+                          disabled={questionsData.page <= 1}
+                          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          onClick={() => setQuestionsPage(p => Math.min(questionsData.total_pages, p + 1))}
+                          disabled={questionsData.page >= questionsData.total_pages}
+                          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

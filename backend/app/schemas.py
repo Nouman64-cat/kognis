@@ -193,3 +193,22 @@ class ListAttemptsResponse(BaseModel):
     attempts: list[AttemptRow]
     global_stats: GlobalAnalytics
     candidate_stats: dict[str, CandidateAnalytics]
+
+
+class QuestionAdminView(BaseModel):
+    id: int
+    exam_id: int
+    text: str
+    options: list[str]
+    correct_answer: int
+    explanation: str | None
+    category: str | None
+    exam_topic: str
+
+
+class PaginatedQuestionsResponse(BaseModel):
+    items: list[QuestionAdminView]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

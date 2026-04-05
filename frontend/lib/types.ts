@@ -108,3 +108,22 @@ export type ListAttemptsResponse = {
   global_stats: GlobalAnalytics;
   candidate_stats: Record<string, CandidateAnalytics>;
 };
+
+export type QuestionAdminView = {
+  id: number;
+  exam_id: number;
+  text: string;
+  options: string[];
+  correct_answer: number;
+  explanation: string | null;
+  category: string | null;
+  exam_topic: string;
+};
+
+export type PaginatedQuestionsResponse = {
+  items: QuestionAdminView[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};

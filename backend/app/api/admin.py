@@ -13,9 +13,12 @@ from app.schemas import (
     CandidateAnalytics,
     GlobalAnalytics,
     ListAttemptsResponse,
+    PaginatedQuestionsResponse,
+    QuestionAdminView,
     parse_topic_mix_from_storage,
 )
 from app.services.llm import generate_mcq_payload
+from sqlalchemy import func
 
 router = APIRouter()
 
@@ -170,4 +173,66 @@ async def list_attempts(
         attempts=attempts,
         global_stats=global_stats,
         candidate_stats=candidate_stats,
+    )
+
+
+@router.get(
+    "/questions",
+    response_model=PaginatedQuestionsResponse,
+)
+async def list_questions(
+    page: int = 1,
+    page_size: int = 10,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> PaginatedQuestionsResponse:
+    if page < 1:
+        page = 1
+    if page_size < 1 or page_size > 100:
+        page_size = 10
+
+    offset = (page - 1) * page_size
+
+    # Get total count
+    total_result = await session.execute(select(func.count(Question.id)))
+    total = total_result.scalar() or 0
+
+    # Get paginated items
+    questions_stmt = (
+        select(Question)
+        .options(selectinload(Question.exam))
+        .order_by(Question.id.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    result = await session.execute(questions_stmt)
+    questions = result.scalars().all()
+
+    items: list[QuestionAdminView] = []
+    for q in questions:
+        exam_topic = "Unknown"
+        if q.exam:
+            exam_topic = q.exam.topic
+
+        items.append(
+            QuestionAdminView(
+                id=q.id,
+                exam_id=q.exam_id,
+                text=q.text,
+                options=q.options,
+                correct_answer=q.correct_answer,
+                explanation=q.explanation,
+                category=q.category,
+                exam_topic=exam_topic,
+            )
+        )
+
+    total_pages = (total + page_size - 1) // page_size
+
+    return PaginatedQuestionsResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )

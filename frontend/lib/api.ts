@@ -6,6 +6,7 @@ import type {
   ExamSummary,
   ExamTopicMix,
   ListAttemptsResponse,
+  PaginatedQuestionsResponse,
   SubmitExamResponse,
 } from "./types";
 
@@ -130,4 +131,23 @@ export async function listAttempts(): Promise<ListAttemptsResponse> {
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<ListAttemptsResponse>;
+}
+
+export async function listQuestions(page: number = 1, pageSize: number = 10): Promise<PaginatedQuestionsResponse> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  
+  const q = new URLSearchParams({ 
+    page: page.toString(), 
+    page_size: pageSize.toString() 
+  });
+  
+  const res = await fetch(`${base()}/api/v1/admin/questions?${q.toString()}`, {
+    cache: "no-store",
+    headers,
+  });
+  
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<PaginatedQuestionsResponse>;
 }
