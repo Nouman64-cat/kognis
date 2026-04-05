@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
 import {
@@ -18,6 +17,7 @@ function ResultsReview({
   setReviewQIdx,
   inviteMode,
   onAnotherExam,
+  onInviteDone,
 }: {
   result: SubmitExamResponse;
   bundle: ExamQuestionsResponse | null;
@@ -25,15 +25,13 @@ function ResultsReview({
   setReviewQIdx: React.Dispatch<React.SetStateAction<number>>;
   inviteMode: boolean;
   onAnotherExam: () => void;
+  onInviteDone: () => void;
 }) {
   const total = result.results.length;
   if (total === 0) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4">
         <p className="text-zinc-600 dark:text-zinc-400">No question results to review.</p>
-        <Link href="/" className="text-emerald-600 hover:underline">
-          ← Home
-        </Link>
       </div>
     );
   }
@@ -58,12 +56,6 @@ function ResultsReview({
                 {result.correct_count} / {result.total_questions} correct
               </p>
             </div>
-            <Link
-              href="/"
-              className="shrink-0 text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400"
-            >
-              ← Home
-            </Link>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {result.results.map((res, i) => {
@@ -230,12 +222,13 @@ function ResultsReview({
                 <ChevronRight className="h-4 w-4" />
               </button>
             ) : inviteMode ? (
-              <Link
-                href="/"
-                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+              <button
+                type="button"
+                onClick={onInviteDone}
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
               >
-                Done — Home
-              </Link>
+                Done
+              </button>
             ) : (
               <button
                 type="button"
@@ -754,6 +747,18 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
             setChoices({});
             void goExams();
           }}
+          onInviteDone={() => {
+            stopTimer();
+            setStep("register");
+            setSelectedExam(null);
+            setBundle(null);
+            setResult(null);
+            setChoices({});
+            setError(null);
+            setTimeLeft(null);
+            setReviewQIdx(0);
+            setCurrentQIdx(0);
+          }}
         />
       ) : (
         /* ── NON‑EXAM STEPS: centred layout ─────────────────────────────── */
@@ -761,11 +766,8 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           <div className="mx-auto max-w-2xl">
 
             {/* Top bar */}
-            <div className="mb-8 flex items-center justify-between">
-              <Link href="/" className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">
-                ← Home
-              </Link>
-              {step !== "register" && (
+            {step !== "register" && (
+              <div className="mb-8 flex justify-end">
                 <button
                   type="button"
                   onClick={() => {
@@ -776,10 +778,10 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                 >
                   Reset
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Candidate Portal</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Your exam</h1>
             <p className="mt-1 text-zinc-500 dark:text-zinc-400">
               {step === "register"
                 ? inviteMode ? "You were invited to an exam. Register to begin." : "Register once per email, then choose an exam."

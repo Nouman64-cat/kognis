@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
-  Home,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -288,14 +287,6 @@ export default function AdminPage() {
           <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             Navigate
           </p>
-          <Link
-            href="/"
-            onClick={closeSidebar}
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          >
-            <Home className="h-4 w-4 shrink-0 opacity-80" />
-            Home
-          </Link>
           <Link
             href="/admin/set-password"
             onClick={closeSidebar}
