@@ -87,6 +87,7 @@ export default function AdminPage() {
   const [attemptsLoading, setAttemptsLoading] = useState(false);
   const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCandidateEmail, setSelectedCandidateEmail] = useState<string | null>(null);
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
@@ -768,8 +769,221 @@ export default function AdminPage() {
                   a.exam_topics.join(" ").toLowerCase().includes(q) || (a.exam_title ?? "").toLowerCase().includes(q)
                 );
               });
+
+              // Aggregate stats
+              const uniqueEmails = [...new Set(attempts.map((a) => a.candidate_email))];
+              const totalAttempts = attempts.length;
+              const avgScore = totalAttempts ? attempts.reduce((s, a) => s + a.score_percent, 0) / totalAttempts : 0;
+              const topScore = totalAttempts ? Math.max(...attempts.map((a) => a.score_percent)) : 0;
+              const passCount = attempts.filter((a) => a.score_percent >= 60).length;
+              const passRate = totalAttempts ? (passCount / totalAttempts) * 100 : 0;
+
+              // Per-candidate panel data
+              const candidateAttempts = selectedCandidateEmail
+                ? attempts.filter((a) => a.candidate_email === selectedCandidateEmail)
+                : [];
+              const candidateName = candidateAttempts[0]?.candidate_name ?? "";
+              const candidateAvg = candidateAttempts.length
+                ? candidateAttempts.reduce((s, a) => s + a.score_percent, 0) / candidateAttempts.length
+                : 0;
+              const candidateBest = candidateAttempts.length
+                ? Math.max(...candidateAttempts.map((a) => a.score_percent))
+                : 0;
+              const candidatePassRate = candidateAttempts.length
+                ? (candidateAttempts.filter((a) => a.score_percent >= 60).length / candidateAttempts.length) * 100
+                : 0;
+
+              // SVG ring helper
+              const Ring = ({ pct, size = 96, stroke = 8 }: { pct: number; size?: number; stroke?: number }) => {
+                const r = (size - stroke) / 2;
+                const circ = 2 * Math.PI * r;
+                const offset = circ - (pct / 100) * circ;
+                const colour = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
+                return (
+                  <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-zinc-100 dark:text-zinc-800" />
+                    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={colour} strokeWidth={stroke}
+                      strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+                      style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+                  </svg>
+                );
+              };
+
               return (
-              <section id="candidates" className="animate-in fade-in slide-in-from-bottom-4 duration-500" aria-labelledby="candidates-heading">
+              <section id="candidates" className="animate-in fade-in slide-in-from-bottom-4 duration-500 relative" aria-labelledby="candidates-heading">
+
+                {/* ── Slide-over panel ─────────────────────────────────── */}
+                {selectedCandidateEmail && (
+                  <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+                    {/* Backdrop */}
+                    <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelectedCandidateEmail(null)} />
+                    {/* Panel */}
+                    <div className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-white shadow-2xl dark:bg-zinc-950">
+                      {/* Header */}
+                      <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+                        <div>
+                          <p className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{candidateName}</p>
+                          <p className="text-sm text-zinc-500">{selectedCandidateEmail}</p>
+                        </div>
+                        <button type="button" onClick={() => setSelectedCandidateEmail(null)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500 transition hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700">
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex-1 space-y-8 px-6 py-6">
+
+                        {/* Big number stat cards */}
+                        <div className="grid grid-cols-3 gap-4">
+                          {[
+                            { label: "Avg. Score", value: `${candidateAvg.toFixed(1)}%`, sub: `${candidateAttempts.length} exam${candidateAttempts.length !== 1 ? "s" : ""}`, colour: "violet" },
+                            { label: "Best Score", value: `${candidateBest.toFixed(1)}%`, sub: "personal best", colour: "emerald" },
+                            { label: "Pass Rate", value: `${candidatePassRate.toFixed(0)}%`, sub: "≥60% threshold", colour: "amber" },
+                          ].map((card) => (
+                            <div key={card.label} className="rounded-2xl border border-zinc-200/80 bg-zinc-50 p-4 dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
+                              <p className={`mt-1.5 text-2xl font-extrabold tabular-nums ${
+                                card.colour === "violet" ? "text-violet-600 dark:text-violet-400" :
+                                card.colour === "emerald" ? "text-emerald-600 dark:text-emerald-400" :
+                                "text-amber-600 dark:text-amber-400"
+                              }`}>{card.value}</p>
+                              <p className="mt-0.5 text-xs text-zinc-400">{card.sub}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Score ring + avg spotlight */}
+                        <div className="flex items-center gap-6 rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+                          <div className="relative shrink-0">
+                            <Ring pct={candidateAvg} size={100} stroke={9} />
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="text-lg font-black tabular-nums text-zinc-900 dark:text-zinc-50">{candidateAvg.toFixed(0)}%</span>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Overall Average</p>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {candidateAttempts.filter(a => a.score_percent >= 60).length} passed&nbsp;·&nbsp;
+                              {candidateAttempts.filter(a => a.score_percent < 60).length} failed
+                            </p>
+                            <div className="mt-3 h-2 w-48 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                              <div className={`h-full rounded-full transition-all ${
+                                candidateAvg >= 80 ? "bg-emerald-500" : candidateAvg >= 60 ? "bg-amber-500" : "bg-red-500"
+                              }`} style={{ width: `${candidateAvg}%` }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bar chart of all exams */}
+                        {candidateAttempts.length > 1 && (
+                          <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+                            <p className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Score per Exam</p>
+                            <div className="space-y-3">
+                              {candidateAttempts.map((a, i) => {
+                                const name = a.exam_title ?? a.exam_topics.join(", ");
+                                const colour = a.score_percent >= 80 ? "bg-emerald-500" : a.score_percent >= 60 ? "bg-amber-500" : "bg-red-500";
+                                return (
+                                  <div key={a.attempt_id} className="flex items-center gap-3">
+                                    <span className="w-4 shrink-0 text-right text-xs font-bold text-zinc-400">{i + 1}</span>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="truncate text-xs text-zinc-600 dark:text-zinc-400">{name}</span>
+                                        <span className={`shrink-0 text-xs font-bold tabular-nums ${
+                                          a.score_percent >= 80 ? "text-emerald-600 dark:text-emerald-400" :
+                                          a.score_percent >= 60 ? "text-amber-600 dark:text-amber-400" :
+                                          "text-red-600 dark:text-red-400"
+                                        }`}>{a.score_percent.toFixed(1)}%</span>
+                                      </div>
+                                      <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                                        <div className={`h-full rounded-full transition-all duration-700 ${colour}`}
+                                          style={{ width: `${a.score_percent}%` }} />
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* SVG mini bar chart */}
+                            <div className="mt-5 overflow-hidden rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800/60">
+                              <svg viewBox={`0 0 ${candidateAttempts.length * 40} 80`} className="w-full" preserveAspectRatio="none" style={{ height: 80 }}>
+                                {candidateAttempts.map((a, i) => {
+                                  const h = (a.score_percent / 100) * 72;
+                                  const y = 80 - h;
+                                  const colour = a.score_percent >= 80 ? "#10b981" : a.score_percent >= 60 ? "#f59e0b" : "#ef4444";
+                                  return (
+                                    <g key={a.attempt_id}>
+                                      <rect x={i * 40 + 6} y={y} width={28} height={h} rx={4} fill={colour} opacity={0.85} />
+                                      <text x={i * 40 + 20} y={76} textAnchor="middle" fontSize={9} fill="#71717a">{i + 1}</text>
+                                    </g>
+                                  );
+                                })}
+                                {/* 60% line */}
+                                <line x1={0} y1={80 - 0.6 * 72} x2={candidateAttempts.length * 40} y2={80 - 0.6 * 72}
+                                  stroke="#f59e0b" strokeDasharray="4 3" strokeWidth={1} opacity={0.7} />
+                                {/* 80% line */}
+                                <line x1={0} y1={80 - 0.8 * 72} x2={candidateAttempts.length * 40} y2={80 - 0.8 * 72}
+                                  stroke="#10b981" strokeDasharray="4 3" strokeWidth={1} opacity={0.7} />
+                              </svg>
+                              <div className="mt-2 flex gap-4 text-xs text-zinc-400">
+                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-emerald-500" />≥80% pass</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-amber-400" />≥60% pass</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-red-500" />&lt;60% fail</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Per-exam detail cards */}
+                        <div>
+                          <p className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Exam Breakdown</p>
+                          <div className="space-y-3">
+                            {candidateAttempts.map((a) => {
+                              const pct = a.score_percent;
+                              const passed = pct >= 60;
+                              return (
+                                <div key={a.attempt_id}
+                                  className={`rounded-xl border p-4 ${
+                                    passed ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+                                           : "border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/20"
+                                  }`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">
+                                        {a.exam_title ?? a.exam_topics.join(", ")}
+                                      </p>
+                                      <p className="mt-0.5 text-xs capitalize text-zinc-500">{a.exam_complexity}{a.duration_minutes ? ` · ${a.duration_minutes} min` : ""}</p>
+                                    </div>
+                                    <div className="flex shrink-0 flex-col items-end">
+                                      <span className={`text-lg font-black tabular-nums ${
+                                        pct >= 80 ? "text-emerald-600 dark:text-emerald-400" :
+                                        pct >= 60 ? "text-amber-600 dark:text-amber-400" :
+                                        "text-red-600 dark:text-red-400"
+                                      }`}>{pct.toFixed(1)}%</span>
+                                      <span className={`text-xs font-semibold ${
+                                        passed ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                                      }`}>{passed ? "PASSED" : "FAILED"}</span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex items-center gap-3">
+                                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                      <div className={`h-full rounded-full ${
+                                        pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500"
+                                      }`} style={{ width: `${pct}%` }} />
+                                    </div>
+                                    <span className="shrink-0 text-xs text-zinc-500">{a.correct_count}/{a.total_questions} correct</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Page header ──────────────────────────────────────── */}
                 <div className="mb-8 flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-500/20 shadow-sm dark:bg-violet-500/10 dark:text-violet-400 dark:ring-violet-500/30">
@@ -780,7 +994,7 @@ export default function AdminPage() {
                         Candidates &amp; Results
                       </h2>
                       <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                        All exam attempts — see who attempted which exam and their scores.
+                        Click any row to view a full performance breakdown.
                       </p>
                     </div>
                   </div>
@@ -795,33 +1009,59 @@ export default function AdminPage() {
                   </button>
                 </div>
 
-                {/* Stats row */}
-                {!attemptsLoading && attempts.length > 0 && (() => {
-                  const unique = new Set(attempts.map((a) => a.candidate_email)).size;
-                  const avg = attempts.reduce((s, a) => s + a.score_percent, 0) / attempts.length;
-                  const top = Math.max(...attempts.map((a) => a.score_percent));
+                {/* ── Enhanced stat cards ───────────────────────────────── */}
+                {!attemptsLoading && attempts.length > 0 && (
+                  <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                    {[
+                      { label: "Candidates", value: uniqueEmails.length, suffix: "", colour: "violet", glow: "bg-violet-500/10" },
+                      { label: "Total Attempts", value: totalAttempts, suffix: "", colour: "blue", glow: "bg-blue-500/10" },
+                      { label: "Avg. Score", value: avgScore.toFixed(1), suffix: "%", colour: "indigo", glow: "bg-indigo-500/10" },
+                      { label: "Top Score", value: topScore.toFixed(1), suffix: "%", colour: "emerald", glow: "bg-emerald-500/10" },
+                      { label: "Pass Rate", value: passRate.toFixed(0), suffix: "%", colour: "amber", glow: "bg-amber-500/10" },
+                    ].map((card) => (
+                      <div key={card.label} className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                        <div className={`absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full ${card.glow} blur-2xl transition-transform duration-700 group-hover:scale-150`} />
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
+                        <p className="mt-2 text-4xl font-extrabold tabular-nums text-zinc-900 dark:text-zinc-50">
+                          {card.value}<span className="ml-1 text-2xl font-bold text-zinc-400">{card.suffix}</span>
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── Score distribution mini-chart (global) ──────────── */}
+                {!attemptsLoading && attempts.length > 1 && (() => {
+                  const buckets = [
+                    { label: "0–20", min: 0, max: 20 },
+                    { label: "21–40", min: 21, max: 40 },
+                    { label: "41–60", min: 41, max: 60 },
+                    { label: "61–80", min: 61, max: 80 },
+                    { label: "81–100", min: 81, max: 100 },
+                  ].map((b) => ({ ...b, count: attempts.filter((a) => a.score_percent >= b.min && a.score_percent <= b.max).length }));
+                  const maxCount = Math.max(...buckets.map((b) => b.count), 1);
                   return (
-                    <div className="mb-8 grid gap-4 sm:grid-cols-3">
-                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-violet-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Unique Candidates</p>
-                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{unique}</p>
+                    <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                      <p className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Score Distribution</p>
+                      <div className="flex items-end gap-2" style={{ height: 80 }}>
+                        {buckets.map((b) => {
+                          const h = Math.round((b.count / maxCount) * 72);
+                          const colour = b.min >= 81 ? "bg-emerald-500" : b.min >= 61 ? "bg-teal-500" : b.min >= 41 ? "bg-amber-500" : b.min >= 21 ? "bg-orange-500" : "bg-red-500";
+                          return (
+                            <div key={b.label} className="flex flex-1 flex-col items-center gap-1">
+                              {b.count > 0 && <span className="text-xs font-bold text-zinc-500">{b.count}</span>}
+                              <div className={`w-full rounded-t-md transition-all ${colour}`} style={{ height: h || 4 }} />
+                              <span className="text-xs text-zinc-400">{b.label}</span>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-blue-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Avg. Score</p>
-                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{avg.toFixed(1)}<span className="ml-1 text-2xl font-bold text-zinc-400">%</span></p>
-                      </div>
-                      <div className="group relative overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                        <div className="absolute right-0 top-0 -mt-6 -mr-6 h-24 w-24 rounded-full bg-amber-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Top Score</p>
-                        <p className="mt-2 text-4xl font-extrabold text-zinc-900 dark:text-zinc-50">{top.toFixed(1)}<span className="ml-1 text-2xl font-bold text-zinc-400">%</span></p>
-                      </div>
+                      <p className="mt-1 text-xs text-zinc-400">Number of attempts per score range</p>
                     </div>
                   );
                 })()}
 
-                {/* Search */}
+                {/* ── Search ───────────────────────────────────────────── */}
                 {attempts.length > 0 && (
                   <div className="mb-4">
                     <input
@@ -854,6 +1094,7 @@ export default function AdminPage() {
                   </div>
                 )}
 
+                {/* ── Attempts table ─────────────────────────────────── */}
                 {filtered.length > 0 && (
                   <div className="overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm dark:border-zinc-700">
                     <table className="w-full min-w-[700px] text-left text-sm">
@@ -861,7 +1102,7 @@ export default function AdminPage() {
                         <tr>
                           <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Candidate</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 sm:table-cell dark:text-zinc-300">Email</th>
-                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Exam Topic</th>
+                          <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Exam</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 md:table-cell dark:text-zinc-300">Level</th>
                           <th className="px-5 py-3.5 font-semibold text-zinc-700 dark:text-zinc-300">Score</th>
                           <th className="hidden px-5 py-3.5 font-semibold text-zinc-700 lg:table-cell dark:text-zinc-300">Correct / Total</th>
@@ -872,14 +1113,21 @@ export default function AdminPage() {
                           const pct = a.score_percent;
                           const scoreColor =
                             pct >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                            pct >= 50 ? "text-amber-600 dark:text-amber-400" :
+                            pct >= 60 ? "text-amber-600 dark:text-amber-400" :
                             "text-red-600 dark:text-red-400";
                           const barColor =
                             pct >= 80 ? "bg-emerald-500" :
-                            pct >= 50 ? "bg-amber-500" :
+                            pct >= 60 ? "bg-amber-500" :
                             "bg-red-500";
+                          const isSelected = selectedCandidateEmail === a.candidate_email;
                           return (
-                            <tr key={a.attempt_id} className="bg-white transition hover:bg-zinc-50/80 dark:bg-zinc-900 dark:hover:bg-zinc-800/60">
+                            <tr key={a.attempt_id}
+                              onClick={() => setSelectedCandidateEmail(a.candidate_email)}
+                              className={`cursor-pointer transition ${
+                                isSelected
+                                  ? "bg-violet-50 dark:bg-violet-950/30"
+                                  : "bg-white hover:bg-zinc-50/80 dark:bg-zinc-900 dark:hover:bg-zinc-800/60"
+                              }`}>
                               <td className="px-5 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
