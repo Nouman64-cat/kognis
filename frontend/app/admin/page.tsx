@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
-import { generateExamAdmin, listAttempts, listExams, listQuestions } from "@/lib/api";
+import { generateExamAdmin, listAttempts, listExams, listQuestions, deleteAttempt } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
 import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics, PaginatedQuestionsResponse } from "@/lib/types";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
@@ -110,6 +110,9 @@ export default function AdminPage() {
   const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidateEmail, setSelectedCandidateEmail] = useState<string | null>(null);
+  const [retakeConfirmId, setRetakeConfirmId] = useState<number | null>(null);
+  const [retakeLoading, setRetakeLoading] = useState(false);
+  const [retakeBanner, setRetakeBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [questionsData, setQuestionsData] = useState<PaginatedQuestionsResponse | null>(null);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
@@ -1304,12 +1307,27 @@ export default function AdminPage() {
                                   <th className="px-5 py-3">Assessment Context</th>
                                   <th className="px-5 py-3">Timeline</th>
                                   <th className="px-5 py-3 text-right">Result</th>
+                                  <th className="px-5 py-3 text-right">Actions</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                {retakeBanner && (
+                                  <tr>
+                                    <td colSpan={4} className="px-5 pb-2 pt-0">
+                                      <div className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                                        retakeBanner.type === "success"
+                                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                                          : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                                      }`}>
+                                        {retakeBanner.message}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
                                 {selectedCandidateAttempts.map((a) => {
                                   const pct = a.score_percent;
                                   const passed = pct >= 75;
+                                  const isConfirming = retakeConfirmId === a.attempt_id;
                                   return (
                                     <tr key={a.attempt_id} className="group hover:bg-zinc-50 dark:hover:bg-zinc-900/40 transition-colors">
                                       <td className="px-5 py-3">
@@ -1329,6 +1347,51 @@ export default function AdminPage() {
                                         }`}>
                                           {pct.toFixed(0)}%
                                         </span>
+                                      </td>
+                                      <td className="px-5 py-3 text-right">
+                                        {isConfirming ? (
+                                          <div className="flex items-center justify-end gap-2">
+                                            <span className="text-[10px] text-zinc-500">Erase attempt?</span>
+                                            <button
+                                              type="button"
+                                              disabled={retakeLoading}
+                                              onClick={async () => {
+                                                setRetakeLoading(true);
+                                                setRetakeBanner(null);
+                                                try {
+                                                  await deleteAttempt(a.attempt_id);
+                                                  setRetakeConfirmId(null);
+                                                  setRetakeBanner({ type: "success", message: `Retake enabled for "${a.exam_title ?? a.exam_topics[0]}"` });
+                                                  setTimeout(() => setRetakeBanner(null), 4000);
+                                                  await loadAttempts();
+                                                } catch (e) {
+                                                  setRetakeBanner({ type: "error", message: e instanceof Error ? e.message : "Failed to delete attempt" });
+                                                  setRetakeConfirmId(null);
+                                                } finally {
+                                                  setRetakeLoading(false);
+                                                }
+                                              }}
+                                              className="rounded-md bg-red-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                                            >
+                                              {retakeLoading ? "…" : "Yes, erase"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setRetakeConfirmId(null)}
+                                              className="rounded-md border border-zinc-200 px-2 py-1 text-[10px] font-bold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => { setRetakeConfirmId(a.attempt_id); setRetakeBanner(null); }}
+                                            className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-[10px] font-bold text-zinc-600 hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-300 transition-colors"
+                                          >
+                                            Allow Retake
+                                          </button>
+                                        )}
                                       </td>
                                     </tr>
                                   );

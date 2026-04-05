@@ -236,3 +236,29 @@ async def list_questions(
         page_size=page_size,
         total_pages=total_pages,
     )
+
+
+@router.delete(
+    "/attempts/{attempt_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_attempt(
+    attempt_id: int,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> None:
+    """Delete an exam attempt so the candidate can retake the exam.
+
+    Cascade deletes all associated candidate_answer rows automatically.
+    """
+    result = await session.execute(
+        select(ExamAttempt).where(ExamAttempt.id == attempt_id)
+    )
+    attempt = result.scalar_one_or_none()
+    if attempt is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Attempt {attempt_id} not found.",
+        )
+    await session.delete(attempt)
+    await session.commit()

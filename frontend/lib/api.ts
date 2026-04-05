@@ -151,3 +151,16 @@ export async function listQuestions(page: number = 1, pageSize: number = 10): Pr
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<PaginatedQuestionsResponse>;
 }
+
+export async function deleteAttempt(attemptId: number): Promise<void> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${base()}/api/v1/admin/attempts/${attemptId}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+}
