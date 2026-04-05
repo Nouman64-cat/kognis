@@ -15,11 +15,24 @@ import type { ExamQuestionsResponse, ExamSummary, SubmitExamResponse } from "@/l
 
 const STORAGE_KEY = "kognis_candidate_email";
 
-type Step = "register" | "exams" | "take" | "results";
+type Step = "register" | "exams" | "waiting" | "take" | "results";
 
 export type CandidateFlowProps = {
   presetExamId?: number;
 };
+
+function fmtWaitTime(secs: number): string {
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (d > 0) {
+    return `${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  }
+  return h > 0
+    ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 /** Format seconds as MM:SS */
 function fmtTime(secs: number): string {
@@ -130,10 +143,16 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       const data = await getExamQuestions(examId, emailVal.trim().toLowerCase());
       setBundle(data);
       setSelectedExam({ id: data.exam.id, title: data.exam.title, topics: data.exam.topics, complexity: data.exam.complexity, total_questions: data.exam.total_questions, duration_minutes: data.exam.duration_minutes, scheduled_for: data.exam.scheduled_for, created_at: data.exam.created_at });
-      setChoices({});
-      setCurrentQIdx(0);
-      setStep("take");
-      if (data.exam.duration_minutes) startTimer(data.exam.duration_minutes * 60);
+      
+      const isFuture = data.exam.scheduled_for && new Date(data.exam.scheduled_for).getTime() > Date.now();
+      if (isFuture) {
+        setStep("waiting");
+      } else {
+        setChoices({});
+        setCurrentQIdx(0);
+        setStep("take");
+        if (data.exam.duration_minutes) startTimer(data.exam.duration_minutes * 60);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load questions");
       setSelectedExam(null); setBundle(null);
@@ -481,6 +500,14 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
               </div>
             )}
 
+            {/* ── Waiting Room ── */}
+            {step === "waiting" && selectedExam && (
+              <WaitingRoom
+                exam={selectedExam}
+                onEnter={() => void loadExam(selectedExam.id, email)}
+              />
+            )}
+
             {/* ── Results ── */}
             {step === "results" && result && (() => {
               const pct = result.score_percent;
@@ -530,6 +557,52 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function WaitingRoom({ exam, onEnter }: { exam: ExamSummary, onEnter: () => void }) {
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  useEffect(() => {
+    if (!exam.scheduled_for) return;
+    const target = new Date(exam.scheduled_for).getTime();
+    
+    const update = () => {
+      const diff = Math.floor((target - Date.now()) / 1000);
+      if (diff <= 0) {
+        setTimeLeft(0);
+        onEnter();
+      } else {
+        setTimeLeft(diff);
+      }
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [exam.scheduled_for, onEnter]);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center mt-8 space-y-6">
+      <div className="flex justify-center">
+        <div className="rounded-full bg-amber-100 p-4 dark:bg-amber-900/40">
+          <ClockIcon className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+        </div>
+      </div>
+      <div>
+        <h2 className="mb-2 text-2xl font-bold text-zinc-900 dark:text-zinc-50">Exam begins soon</h2>
+        <p className="text-zinc-500 dark:text-zinc-400">{exam.title ?? exam.topics.join(", ")}</p>
+      </div>
+      
+      <div className="mx-auto mt-6 rounded-3xl border border-zinc-200 bg-white px-10 py-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/60 inline-block">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Starting in</p>
+        <p className="font-mono text-4xl sm:text-5xl font-black tabular-nums text-amber-500 drop-shadow-sm transition-all dark:text-amber-400">
+          {fmtWaitTime(timeLeft)}
+        </p>
+      </div>
+      <p className="mx-auto mt-8 max-w-md text-sm leading-relaxed text-zinc-400">
+        Please do not refresh this page. You will be automatically redirected into the exam room the moment the countdown hits zero.
+      </p>
     </div>
   );
 }

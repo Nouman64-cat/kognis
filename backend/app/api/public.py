@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,10 +71,13 @@ async def get_exam_questions(
     if exam is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
 
-    q_res = await session.execute(
-        select(Question).where(Question.exam_id == exam_id).order_by(Question.id)
-    )
-    questions = q_res.scalars().all()
+    if exam.scheduled_for and exam.scheduled_for > datetime.now(timezone.utc):
+        questions = []
+    else:
+        q_res = await session.execute(
+            select(Question).where(Question.exam_id == exam_id).order_by(Question.id)
+        )
+        questions = q_res.scalars().all()
 
     return ExamQuestionsResponse(
         exam=ExamSummary(
