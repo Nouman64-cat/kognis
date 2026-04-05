@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,40 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Question markdown: code blocks */
+.question-body pre {
+  background: #18181b;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.question-body pre code {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: #e4e4e7;
+  font-family: var(--font-mono), 'Fira Code', 'Consolas', monospace;
+}
+
+.question-body code:not(pre code) {
+  background: #f4f4f5;
+  color: #18181b;
+  padding: 0.15em 0.4em;
+  border-radius: 0.35em;
+  font-size: 0.875em;
+  font-family: var(--font-mono), 'Consolas', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  .question-body code:not(pre code) {
+    background: #27272a;
+    color: #e4e4e7;
+  }
 }

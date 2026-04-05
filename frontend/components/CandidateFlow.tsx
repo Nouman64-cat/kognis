@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github-dark.css";
 import {
   getExamQuestions,
   listExams,
@@ -303,9 +306,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
                 {/* Question text */}
                 <div className="px-6 py-5">
-                  <p className="text-lg leading-relaxed text-zinc-900 dark:text-zinc-50">
-                    {currentQ.text}
-                  </p>
+                  <div className="question-body text-base leading-relaxed text-zinc-900 dark:text-zinc-50">
+                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                      {currentQ.text}
+                    </ReactMarkdown>
+                  </div>
                 </div>
 
                 {/* Options */}
