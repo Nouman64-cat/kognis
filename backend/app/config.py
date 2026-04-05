@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-3-5-haiku-20241022"
 
     # Split large exams into multiple LLM calls (each batch ≤ this many questions).
-    mcq_max_questions_per_batch: int = Field(default=20, ge=1, le=100)
+    # Default 8: gpt-4o-mini caps completion at 16384 tokens; larger batches often hit LengthFinishReasonError.
+    mcq_max_questions_per_batch: int = Field(default=8, ge=1, le=100)
 
     admin_api_key: str | None = None
 

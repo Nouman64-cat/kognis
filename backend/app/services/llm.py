@@ -6,7 +6,7 @@ from collections import Counter
 from typing import Annotated, Any
 
 import anthropic
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, LengthFinishReasonError
 from pydantic import BaseModel, Field, create_model, field_validator
 
 from app.config import LLMProvider, Settings
@@ -53,6 +53,17 @@ class _LLMQuestion(BaseModel):
 
 class _LLMExamPayload(BaseModel):
     questions: list[_LLMQuestion] = Field(min_length=1, max_length=100)
+
+
+def _halve_batch_counts(batch_counts: dict[str, int]) -> tuple[dict[str, int], dict[str, int]]:
+    """Split a batch into two smaller batches (same category totals, roughly half the slots each)."""
+    slots: list[str] = []
+    for name, cnt in batch_counts.items():
+        slots.extend([name] * cnt)
+    if len(slots) < 2:
+        raise RuntimeError("cannot halve a batch with fewer than 2 questions")
+    mid = len(slots) // 2
+    return dict(Counter(slots[:mid])), dict(Counter(slots[mid:]))
 
 
 def _split_counts_into_batches(full_counts: dict[str, int], max_batch: int) -> list[dict[str, int]]:
@@ -200,6 +211,63 @@ async def _generate_mcq_payload_attempt(
     raise RuntimeError(last_err or "MCQ generation failed")
 
 
+async def _generate_batch_with_length_split(
+    settings: Settings,
+    *,
+    topics: list[str],
+    complexity: str,
+    expected_counts: dict[str, int],
+    batch_index: int | None,
+    num_batches: int | None,
+    _depth: int = 0,
+) -> _LLMExamPayload:
+    """
+    If OpenAI hits the completion token ceiling mid-JSON (LengthFinishReasonError), split the batch
+    in half and merge. Sub-calls omit the multi-batch header so prompts stay short.
+    """
+    if _depth > 14:
+        raise RuntimeError(
+            "MCQ generation hit the model output limit repeatedly; try fewer or shorter questions per exam, "
+            "or lower MCQ_MAX_QUESTIONS_PER_BATCH."
+        )
+    n = sum(expected_counts.values())
+    try:
+        return await _generate_mcq_payload_attempt(
+            settings,
+            topics=topics,
+            complexity=complexity,
+            expected_counts=expected_counts,
+            batch_index=batch_index,
+            num_batches=num_batches,
+        )
+    except LengthFinishReasonError:
+        if n <= 1:
+            raise RuntimeError(
+                "OpenAI output token limit was reached before finishing even one question. "
+                "Try a model with a higher completion limit or reduce question length in the prompt."
+            ) from None
+        left, right = _halve_batch_counts(expected_counts)
+        p1 = await _generate_batch_with_length_split(
+            settings,
+            topics=topics,
+            complexity=complexity,
+            expected_counts=left,
+            batch_index=None,
+            num_batches=None,
+            _depth=_depth + 1,
+        )
+        p2 = await _generate_batch_with_length_split(
+            settings,
+            topics=topics,
+            complexity=complexity,
+            expected_counts=right,
+            batch_index=None,
+            num_batches=None,
+            _depth=_depth + 1,
+        )
+        return _LLMExamPayload(questions=p1.questions + p2.questions)
+
+
 async def generate_mcq_payload(
     settings: Settings,
     *,
@@ -217,7 +285,7 @@ async def generate_mcq_payload(
     for bi, batch_counts in enumerate(batch_specs):
         batch_index = bi if num_batches > 1 else None
         nb = num_batches if num_batches > 1 else None
-        part = await _generate_mcq_payload_attempt(
+        part = await _generate_batch_with_length_split(
             settings,
             topics=topics,
             complexity=complexity,
