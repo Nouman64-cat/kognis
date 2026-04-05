@@ -33,7 +33,7 @@ export default function Home() {
             />
             <h2 className="text-xl font-semibold">Candidate</h2>
             <p className="mt-2 flex-1 text-zinc-600 dark:text-zinc-400">
-              Sign in with your email, pick an exam, and submit your answers.
+              Use your invite link or browse exams after you register with your email.
             </p>
             <span className="mt-6 text-sm font-medium text-emerald-600 group-hover:underline dark:text-emerald-400">
               Start →
