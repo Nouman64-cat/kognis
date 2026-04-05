@@ -17,7 +17,15 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env`: set `DATABASE_URL`, at least one LLM key (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` per `LLM_PROVIDER`), and `ADMIN_API_KEY`. If passwords contain special characters, URL-encode them in `DATABASE_URL`.
+Edit `.env`: set `DATABASE_URL`, `JWT_SECRET` (random string for admin login tokens), at least one LLM key (`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` per `LLM_PROVIDER`). Optional: `ADMIN_API_KEY` for legacy API access without JWT. If DB passwords contain special characters, URL-encode them in `DATABASE_URL`.
+
+After migrations, create a **one-time password** and set your admin password:
+
+```bash
+python scripts/generate_admin_otp.py
+```
+
+Then use the frontend `/admin/set-password` (or the API) with that OTP and your new password, and log in at `/admin/login`.
 
 ## Database
 

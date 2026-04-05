@@ -1,6 +1,24 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
+class AdminLoginRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=512)
+
+
+class AdminTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class AdminSetPasswordRequest(BaseModel):
+    otp: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=8, max_length=512)
+
+
+class AdminAuthStatusResponse(BaseModel):
+    has_password: bool
+
+
 class AdminGenerateExamRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=512)
     complexity: str = Field(min_length=1, max_length=64)

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
 
     admin_api_key: str | None = None
 
+    # JWT for admin login (set a long random string in production)
+    jwt_secret: str | None = None
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 10080  # 7 days
+
     # Comma-separated origins, e.g. http://localhost:3000,https://app.example.com
     allowed_origins: str = ""
 

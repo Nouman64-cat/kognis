@@ -9,7 +9,15 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.config import get_settings
-from app.models import Candidate, CandidateAnswer, Exam, ExamAttempt, Question  # noqa: F401
+from app.models import (  # noqa: F401
+    AdminAuth,
+    AdminOtp,
+    Candidate,
+    CandidateAnswer,
+    Exam,
+    ExamAttempt,
+    Question,
+)
 from sqlmodel import SQLModel
 
 config = context.config

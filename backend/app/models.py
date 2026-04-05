@@ -1,11 +1,32 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, UniqueConstraint
+from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     pass
+
+
+class AdminAuth(SQLModel, table=True):
+    """Singleton admin account (id must be 1)."""
+
+    __tablename__ = "admin_auth"
+
+    id: int = Field(default=1, primary_key=True)
+    password_hash: str | None = Field(default=None, max_length=255)
+
+
+class AdminOtp(SQLModel, table=True):
+    """One-time password for first-time or recovery setup."""
+
+    __tablename__ = "admin_otp"
+
+    id: int | None = Field(default=None, primary_key=True)
+    token_hash: str = Field(max_length=255)
+    expires_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    used_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
 
 
 class Candidate(SQLModel, table=True):

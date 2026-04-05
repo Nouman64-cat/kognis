@@ -1,3 +1,4 @@
+import { getAdminToken } from "./admin-token";
 import type {
   AdminGenerateResponse,
   CandidatePublic,
@@ -68,14 +69,42 @@ export async function submitExam(
   return res.json() as Promise<SubmitExamResponse>;
 }
 
+export async function adminAuthStatus(): Promise<{ has_password: boolean }> {
+  const res = await fetch(`${base()}/api/v1/admin/auth/status`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<{ has_password: boolean }>;
+}
+
+export async function adminLogin(password: string): Promise<{ access_token: string }> {
+  const res = await fetch(`${base()}/api/v1/admin/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<{ access_token: string }>;
+}
+
+export async function adminSetPassword(otp: string, newPassword: string): Promise<void> {
+  const res = await fetch(`${base()}/api/v1/admin/auth/set-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ otp: otp.trim(), new_password: newPassword }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+}
+
 export async function generateExamAdmin(body: {
   topic: string;
   complexity: string;
   total_questions: number;
 }): Promise<AdminGenerateResponse> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch("/api/admin/exams/generate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
   if (!res.ok) {

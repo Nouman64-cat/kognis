@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api import admin, public, submit
+from app.api import admin, admin_auth, public, submit
 from app.config import get_settings
 
 
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
         )
 
     v1 = "/api/v1"
+    app.include_router(admin_auth.router, prefix=f"{v1}/admin")
     app.include_router(admin.router, prefix=f"{v1}/admin")
     app.include_router(public.router, prefix=v1)
     app.include_router(submit.router, prefix=v1)

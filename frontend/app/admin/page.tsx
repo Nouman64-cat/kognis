@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { clearAdminToken } from "@/lib/admin-token";
 import { generateExamAdmin, listExams } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
 import type { ExamSummary } from "@/lib/types";
 
 export default function AdminPage() {
+  const router = useRouter();
   const [topic, setTopic] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
@@ -72,17 +75,33 @@ export default function AdminPage() {
   return (
     <div className="min-h-full bg-gradient-to-b from-zinc-50 to-zinc-100 px-4 py-10 dark:from-zinc-950 dark:to-black">
       <div className="mx-auto max-w-2xl">
-        <Link
-          href="/"
-          className="text-sm font-medium text-amber-600 hover:underline dark:text-amber-400"
-        >
-          ← Home
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="text-sm font-medium text-amber-600 hover:underline dark:text-amber-400"
+          >
+            ← Home
+          </Link>
+          <div className="flex items-center gap-4 text-sm">
+            <Link href="/admin/set-password" className="text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200">
+              Change password (OTP)
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                clearAdminToken();
+                router.replace("/admin/login");
+              }}
+              className="font-medium text-amber-700 hover:underline dark:text-amber-400"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Admin</h1>
         <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-          Create exams with your server{" "}
-          <code className="rounded bg-zinc-200 px-1 text-xs dark:bg-zinc-800">ADMIN_API_KEY</code>.
-          Existing quizzes load from the API below.
+          You are signed in. Generate exams below (API uses your session token). Existing quizzes load
+          from the database.
         </p>
 
         <section className="mt-10">
