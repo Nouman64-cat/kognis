@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Award,
   BookOpen,
+  Check,
+  ChevronDown,
   Home,
   KeyRound,
   Layers,
@@ -14,6 +17,8 @@ import {
   Menu,
   RefreshCw,
   Sparkles,
+  TrendingUp,
+  Users,
   X,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
@@ -55,6 +60,7 @@ function SidebarSectionButton({
 export default function AdminPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library">("overview");
   const [topic, setTopic] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
@@ -74,16 +80,18 @@ export default function AdminPage() {
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
-  /** In-page nav: Next.js + flex layouts often break raw #hash scrolling. */
+  /** In-page nav */
   const goToSection = useCallback((id: string) => {
     setSidebarOpen(false);
-    window.setTimeout(() => scrollPageToSection(id), 160);
+    setActiveTab(id as any);
+    window.history.replaceState(null, "", `#${id}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, "");
     if (hash && ["overview", "create", "library"].includes(hash)) {
-      requestAnimationFrame(() => scrollPageToSection(hash));
+      setActiveTab(hash as any);
     }
   }, []);
 
@@ -259,173 +267,268 @@ export default function AdminPage() {
             </div>
 
             {/* Overview */}
-            <section id="overview" className="scroll-mt-24 lg:scroll-mt-8" aria-labelledby="overview-heading">
-              <div className="mb-4 flex items-center gap-2">
-                <Layers className="h-5 w-5 text-zinc-400" />
-                <h2 id="overview-heading" className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                  Overview
-                </h2>
+            {activeTab === "overview" && (
+            <section id="overview" className="animate-in fade-in slide-in-from-bottom-4 duration-500" aria-labelledby="overview-heading">
+              <div className="mb-8 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-500/20 shadow-sm dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/30">
+                  <TrendingUp className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 id="overview-heading" className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                    Platform Overview
+                  </h2>
+                  <p className="mt-1 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                    Aggregated intelligence on exams generated and question banks. Observe your platform growth and active API status.
+                  </p>
+                </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Total exams</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {listLoading ? "—" : exams.length}
-                  </p>
+              <div className="grid gap-6 sm:grid-cols-3">
+                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                  <div className="relative">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                        <LayoutDashboard className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">Total Exams Created</p>
+                    </div>
+                    <p className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
+                      {listLoading ? "—" : exams.length}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Questions in library</p>
-                  <p className="mt-1 text-2xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {listLoading ? "—" : totalQuestionBank}
-                  </p>
+                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-amber-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                  <div className="relative">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                        <Award className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">Questions in Library</p>
+                    </div>
+                    <p className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
+                      {listLoading ? "—" : totalQuestionBank}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">API</p>
-                  <p className="mt-1 truncate font-mono text-sm text-zinc-700 dark:text-zinc-300" title={apiUrl}>
-                    {listError ? (
-                      <span className="text-red-600 dark:text-red-400">Unreachable</span>
-                    ) : (
-                      <span className="text-emerald-700 dark:text-emerald-400">Connected</span>
-                    )}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-400">{apiUrl}</p>
+                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
+                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                  <div className="relative">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                        <RefreshCw className={`h-5 w-5 ${listLoading ? 'animate-spin' : ''}`} />
+                      </div>
+                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">API Connection</p>
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                        {listError ? (
+                          <span className="inline-flex items-center gap-2 text-red-600 dark:text-red-400">
+                            <span className="relative flex h-3 w-3"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span> Disconnected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                            <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span> Active
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-2 truncate font-mono text-xs text-zinc-400 dark:text-zinc-500" title={apiUrl}>{apiUrl}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
+            )}
 
             {/* Create exam */}
+            {activeTab === "create" && (
             <section
               id="create"
-              className="scroll-mt-24 rounded-2xl border border-zinc-200 bg-white shadow-sm lg:scroll-mt-8 dark:border-zinc-800 dark:bg-zinc-900"
+              className="group relative animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden rounded-3xl border border-zinc-200/80 bg-white/50 p-1.5 shadow-sm backdrop-blur-xl transition-all hover:shadow-xl hover:shadow-amber-500/5 dark:border-zinc-800/80 dark:bg-zinc-900/50"
               aria-labelledby="create-heading"
             >
-              <div className="border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-amber-500" />
-                  <div>
-                    <h2 id="create-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                      Create exam
-                    </h2>
-                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                      LLM-generated MCQs saved to your database. You’ll get a candidate invite link after creation.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5">
-                {error && (
-                  <div
-                    className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200"
-                    role="alert"
-                  >
-                    {error}
-                  </div>
-                )}
-
-                {success && (
-                  <div
-                    className="mb-6 space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
-                    role="status"
-                  >
-                    <p className="font-medium">Exam created</p>
-                    <p>
-                      ID <strong>{success.exam_id}</strong> · {success.total_questions} questions ·{" "}
-                      {success.topic} ({success.complexity})
-                    </p>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-emerald-800/90 dark:text-emerald-300/90">
-                        Candidate invite link
-                      </p>
-                      <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <code className="block flex-1 break-all rounded-lg bg-white/90 px-2 py-1.5 text-xs dark:bg-zinc-950">
-                          {inviteUrl}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(inviteUrl);
-                              setCopied(true);
-                              setTimeout(() => setCopied(false), 2000);
-                            } catch {
-                              /* ignore */
-                            }
-                          }}
-                          className="shrink-0 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800"
-                        >
-                          {copied ? "Copied" : "Copy link"}
-                        </button>
+              <div className="absolute inset-0 z-0 bg-gradient-to-br from-amber-500/10 via-amber-500/0 to-amber-500/5 opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-100" />
+              <div className="relative z-10 rounded-[1.3rem] bg-white shadow-sm ring-1 ring-zinc-900/5 dark:bg-zinc-950 overflow-hidden">
+                <div className="relative border-b border-zinc-100/80 dark:border-zinc-800/60 overflow-hidden">
+                  <div className="absolute right-0 top-0 -mt-16 -mr-16 h-48 w-48 rounded-full bg-amber-500/5 blur-3xl" />
+                  <div className="absolute left-0 bottom-0 -mb-16 -ml-16 h-48 w-48 rounded-full bg-indigo-500/5 blur-3xl" />
+                  <div className="relative px-6 py-6 sm:px-8">
+                    <div className="flex items-start gap-4">
+                      <div className="flex shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 p-3 shadow-sm ring-1 ring-amber-500/20 dark:from-amber-500/20 dark:to-amber-500/5 dark:ring-amber-500/30">
+                        <Sparkles className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="pt-0.5">
+                        <h2 id="create-heading" className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                          Create AI Exam
+                        </h2>
+                        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                          Instantly generate dynamic, customized MCQs powered by AI. We&apos;ll create a unique candidate invite link ready to be shared immediately.
+                        </p>
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
 
-                <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="sm:col-span-2 lg:col-span-1">
-                    <label htmlFor="topic" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Topic
-                    </label>
-                    <input
-                      id="topic"
-                      required
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                      placeholder="e.g. Python asyncio"
-                      className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="complexity"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+                <div className="relative p-6 sm:p-8">
+                  {error && (
+                    <div
+                      className="animate-in fade-in slide-in-from-top-2 mb-8 flex items-center gap-3 rounded-2xl border border-red-200/80 bg-red-50/80 p-4 text-sm font-medium text-red-800 shadow-sm backdrop-blur-sm dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
+                      role="alert"
                     >
-                      Complexity
-                    </label>
-                    <select
-                      id="complexity"
-                      value={complexity}
-                      onChange={(e) => setComplexity(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                      <div className="flex shrink-0 items-center justify-center rounded-full bg-red-100 p-1.5 dark:bg-red-900/50">
+                        <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      </div>
+                      {error}
+                    </div>
+                  )}
+
+                  {success && (
+                    <div
+                      className="animate-in fade-in slide-in-from-top-4 mb-8 overflow-hidden rounded-2xl border border-emerald-200/80 bg-emerald-50/50 shadow-sm transition-all dark:border-emerald-900/40 dark:bg-emerald-950/20"
+                      role="status"
                     >
-                      <option value="beginner">Beginner</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advanced">Advanced</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="n" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                      Questions
-                    </label>
-                    <input
-                      id="n"
-                      type="number"
-                      min={1}
-                      max={100}
-                      required
-                      value={totalQuestions}
-                      onChange={(e) => setTotalQuestions(Number(e.target.value))}
-                      className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
-                    />
-                  </div>
-                  <div className="flex justify-end border-t border-zinc-100 pt-4 sm:col-span-2 lg:col-span-3 dark:border-zinc-800">
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="inline-flex min-w-[160px] items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-50"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      {loading ? "Generating…" : "Generate exam"}
-                    </button>
-                  </div>
-                </form>
+                      <div className="flex gap-4 border-b border-emerald-100/60 p-5 backdrop-blur-sm dark:border-emerald-900/50">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 dark:bg-emerald-600">
+                          <Check className="h-5 w-5" />
+                        </div>
+                        <div className="pt-1.5">
+                          <p className="font-bold text-emerald-950 dark:text-emerald-50">Exam successfully generated!</p>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-emerald-800/90 dark:text-emerald-200/80">
+                            <span className="flex items-center gap-1 rounded-md bg-emerald-100/80 px-2 py-0.5 font-mono dark:bg-emerald-900/50">
+                              #{success.exam_id}
+                            </span>
+                            <span className="opacity-50">&bull;</span>
+                            <span>{success.total_questions} questions</span>
+                            <span className="opacity-50">&bull;</span>
+                            <span className="font-medium">{success.topic}</span>
+                            <span className="rounded-full bg-emerald-200/50 px-2 py-0.5 text-xs font-semibold uppercase tracking-wider dark:bg-emerald-800/50">{success.complexity}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-emerald-100/30 p-5 dark:bg-emerald-900/10">
+                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-emerald-900/70 dark:text-emerald-400/80">
+                          Candidate invite link
+                        </label>
+                        <div className="group/link flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <div className="relative flex-1">
+                            <code className="block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-emerald-200/80 bg-white px-4 py-3 text-sm font-medium text-emerald-950 shadow-inner transition-colors group-hover/link:border-emerald-300 dark:border-emerald-800/60 dark:bg-zinc-950 dark:text-emerald-100">
+                              {inviteUrl}
+                            </code>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(inviteUrl);
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                              } catch {
+                                /* ignore */
+                              }
+                            }}
+                            className="group/btn relative flex shrink-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white shadow-sm transition-all hover:bg-emerald-500 hover:shadow-md hover:shadow-emerald-500/20 active:scale-[0.98]"
+                          >
+                            <span className="relative z-10 flex items-center gap-2">
+                              {copied ? (
+                                <>
+                                  <Check className="h-4 w-4" />
+                                  Copied!
+                                </>
+                              ) : (
+                                "Copy link"
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={onSubmit} className="grid relative z-10 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="sm:col-span-2">
+                      <label htmlFor="topic" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Primary Topic
+                      </label>
+                      <input
+                        id="topic"
+                        required
+                        value={topic}
+                        onChange={(e) => setTopic(e.target.value)}
+                        placeholder="e.g. React performance, Python async"
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:placeholder:text-zinc-600 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="complexity"
+                        className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200"
+                      >
+                        Complexity Level
+                      </label>
+                      <div className="relative group/select">
+                        <select
+                          id="complexity"
+                          value={complexity}
+                          onChange={(e) => setComplexity(e.target.value)}
+                          className="w-full appearance-none rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 pr-10 text-zinc-900 shadow-sm transition-all hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900 leading-tight"
+                        >
+                          <option value="beginner">Beginner</option>
+                          <option value="intermediate">Intermediate</option>
+                          <option value="advanced">Advanced</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-zinc-400 transition-colors group-hover/select:text-zinc-600 dark:group-hover/select:text-zinc-300">
+                          <ChevronDown className="h-4 w-4" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="n" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                        Total Questions
+                      </label>
+                      <input
+                        id="n"
+                        type="number"
+                        min={1}
+                        max={100}
+                        required
+                        value={totalQuestions}
+                        onChange={(e) => setTotalQuestions(Number(e.target.value))}
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 text-zinc-900 shadow-sm transition-all hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900"
+                      />
+                    </div>
+                    <div className="flex items-center justify-end pt-4 sm:col-span-2 lg:col-span-4 mt-2 border-t border-zinc-100/80 dark:border-zinc-800/60">
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="group relative mt-6 inline-flex w-full min-w-[220px] items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-amber-500 px-6 py-3.5 text-sm font-bold text-amber-950 shadow-md shadow-amber-500/20 transition-all hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/30 focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-amber-500 dark:hover:bg-amber-400 sm:w-auto"
+                      >
+                        <div className="absolute inset-0 flex h-full w-full justify-center [transform:skew(-12deg)_translateX(-120%)] group-hover:duration-1000 group-hover:[transform:skew(-12deg)_translateX(120%)]">
+                          <div className="relative h-full w-8 bg-white/20" />
+                        </div>
+                        {loading ? (
+                          <>
+                            <RefreshCw className="h-5 w-5 animate-spin text-amber-900/70" />
+                            <span>Crafting Exam...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-5 w-5 transition-transform group-hover:scale-110 text-amber-900/70" />
+                            <span>Generate Exam Magic</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </section>
+            )}
 
             {/* Exam library */}
+            {activeTab === "library" && (
             <section
               id="library"
-              className="scroll-mt-24 rounded-2xl border border-zinc-200 bg-white shadow-sm lg:scroll-mt-8 dark:border-zinc-800 dark:bg-zinc-900"
+              className="animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
               aria-labelledby="library-heading"
             >
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
@@ -543,6 +646,7 @@ export default function AdminPage() {
                 )}
               </div>
             </section>
+            )}
           </div>
         </main>
       </div>
