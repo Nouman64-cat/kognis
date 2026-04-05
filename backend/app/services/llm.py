@@ -15,6 +15,7 @@ class _LLMQuestion(BaseModel):
     text: str = Field(min_length=1, max_length=8192)
     options: list[str] = Field(min_length=4, max_length=4)
     correct_index: int = Field(ge=0, le=3)
+    explanation: str = Field(min_length=1, max_length=1024, description="Short reason explaining why the correct answer is right.")
 
     @field_validator("options")
     @classmethod
@@ -39,8 +40,9 @@ def _build_user_prompt(topics: list[str], complexity: str, total_questions: int)
         f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
         f"Target difficulty/complexity: {complexity!r}. "
         "Each question must have exactly four options as plain strings, one correct answer identified by "
-        "correct_index 0-3 matching the position in options. "
-        "Do not include numbering prefixes in the question text that reveal the answer. "
+        "correct_index 0-3 matching the position in options, and a concise 1-sentence explanation "
+        "of why the correct answer is correct. "
+        "Do not include numbering prefixes in the question text. "
         "Vary scenarios and avoid duplicate stems."
     )
 
@@ -109,8 +111,12 @@ def _anthropic_tool_def() -> dict[str, Any]:
                                 "maxItems": 4,
                             },
                             "correct_index": {"type": "integer", "minimum": 0, "maximum": 3},
+                            "explanation": {
+                                "type": "string",
+                                "description": "Short 1-sentence reason why the correct answer is correct"
+                            },
                         },
-                        "required": ["text", "options", "correct_index"],
+                        "required": ["text", "options", "correct_index", "explanation"],
                     },
                 }
             },

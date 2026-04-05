@@ -15,7 +15,7 @@ import type { ExamQuestionsResponse, ExamSummary, SubmitExamResponse } from "@/l
 
 const STORAGE_KEY = "kognis_candidate_email";
 
-type Step = "register" | "exams" | "waiting" | "take" | "results";
+type Step = "register" | "exams" | "waiting" | "guidelines" | "take" | "results";
 
 export type CandidateFlowProps = {
   presetExamId?: number;
@@ -81,6 +81,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
   // Current question index for one-at-a-time navigation
   const [currentQIdx, setCurrentQIdx] = useState(0);
+  const [reviewQIdx, setReviewQIdx] = useState(0);
 
   // ─── Timer ────────────────────────────────────────────────────────────────
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -148,16 +149,35 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       if (isFuture) {
         setStep("waiting");
       } else {
-        setChoices({});
-        setCurrentQIdx(0);
-        setStep("take");
-        if (data.exam.duration_minutes) startTimer(data.exam.duration_minutes * 60);
+        setStep("guidelines");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load questions");
       setSelectedExam(null); setBundle(null);
     } finally { setLoading(false); }
   }, [startTimer]);
+
+  const startExam = useCallback(() => {
+    setChoices({});
+    setCurrentQIdx(0);
+    setStep("take");
+    if (bundle?.exam.duration_minutes) startTimer(bundle.exam.duration_minutes * 60);
+  }, [bundle, startTimer]);
+
+  // ─── Anti-cheat Tab Monitoring ──────────────────────────────────────────
+  useEffect(() => {
+    if (step !== "take") return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setError("Exam automatically submitted: You changed tabs or left the exam window.");
+        autoSubmitRef.current?.();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [step]);
 
   // ─── Submit ───────────────────────────────────────────────────────────────
   const doSubmit = useCallback(async (currentChoices: Record<number, number>, currentBundle: ExamQuestionsResponse) => {
@@ -168,7 +188,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         chosen_option_index: currentChoices[q.id] ?? 0,
       }));
       const res = await submitExam(currentBundle.exam.id, email.trim().toLowerCase(), answers);
-      setResult(res); setStep("results");
+      setResult(res); setReviewQIdx(0); setStep("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally { setLoading(false); }
@@ -500,6 +520,50 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
               </div>
             )}
 
+            {/* ── Guidelines ── */}
+            {step === "guidelines" && selectedExam && (
+              <div className="mx-auto mt-12 max-w-2xl px-6">
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Exam Guidelines</h2>
+                    <p className="text-zinc-500 dark:text-zinc-400">{selectedExam.title ?? selectedExam.topics.join(", ")}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 text-amber-500">•</span>
+                    <p className="text-zinc-700 dark:text-zinc-300">
+                      <strong>Passing Criteria:</strong> You must score at least <strong>75%</strong> to pass this assessment.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 text-amber-500">•</span>
+                    <p className="text-zinc-700 dark:text-zinc-300">
+                      <strong>Time Limit:</strong> You have {selectedExam.duration_minutes ? `${selectedExam.duration_minutes} minutes` : "unlimited time"} to complete {selectedExam.total_questions} questions.
+                    </p>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 text-red-500">•</span>
+                    <p className="text-zinc-700 dark:text-zinc-300">
+                      <strong>Anti-Cheat Active:</strong> Leaving the exam window, changing tabs, or refreshing the page will <strong>automatically submit the exam</strong> immediately.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-end">
+                  <button onClick={startExam} className="rounded-xl bg-emerald-600 px-8 py-3.5 font-bold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-500 hover:-translate-y-0.5 focus:ring-4 focus:ring-emerald-500/30">
+                    I understand, Start Exam
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* ── Waiting Room ── */}
             {step === "waiting" && selectedExam && (
               <WaitingRoom
@@ -511,11 +575,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
             {/* ── Results ── */}
             {step === "results" && result && (() => {
               const pct = result.score_percent;
-              const grade = pct >= 80 ? { label: "Excellent", colour: "emerald" } : pct >= 60 ? { label: "Good", colour: "amber" } : { label: "Needs work", colour: "red" };
+              const grade = pct >= 90 ? { label: "Excellent", colour: "emerald" } : pct >= 75 ? { label: "Good", colour: "amber" } : { label: "Needs work", colour: "red" };
               return (
                 <div className="mt-8 space-y-6">
                   {/* Score card */}
-                  <div className={`relative overflow-hidden rounded-2xl p-6 ${pct >= 80 ? "bg-emerald-600" : pct >= 60 ? "bg-amber-500" : "bg-red-500"}`}>
+                  <div className={`relative overflow-hidden rounded-2xl p-6 ${pct >= 90 ? "bg-emerald-600" : pct >= 75 ? "bg-amber-500" : "bg-red-500"}`}>
                     <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10" />
                     <p className="text-sm font-semibold text-white/80">{grade.label}</p>
                     <p className="mt-1 text-6xl font-black tabular-nums text-white">{pct}%</p>
@@ -530,14 +594,37 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                     <div className="space-y-2">
                       {result.results.map((r, i) => (
                         <div key={r.question_id}
-                          className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${r.is_correct ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30" : "border-red-200 bg-red-50/60 dark:border-red-900/50 dark:bg-red-950/30"}`}>
-                          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                            Q{i + 1} {r.is_correct ? "✓" : "✗"}
-                          </span>
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            You: <strong>{String.fromCharCode(65 + r.chosen_option_index)}</strong>
-                            {!r.is_correct && <> · Correct: <strong className="text-emerald-600 dark:text-emerald-400">{String.fromCharCode(65 + r.correct_option_index)}</strong></>}
-                          </span>
+                          className={`flex flex-col gap-3 rounded-xl border px-5 py-4 text-sm ${r.is_correct ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20" : "border-red-200 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20"}`}>
+                          <div className="flex items-center justify-between">
+                            <span className={`font-semibold ${r.is_correct ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                              Question {i + 1} {r.is_correct ? "✓" : "✗"}
+                            </span>
+                          </div>
+                          
+                          <div className="grid gap-2">
+                            <div className="flex items-start gap-2">
+                              <span className="mt-0.5 font-medium text-zinc-500 dark:text-zinc-400">You:</span>
+                              <span className={`flex-1 ${r.is_correct ? "font-medium text-zinc-900 dark:text-zinc-100" : "line-through text-zinc-500 dark:text-zinc-500"}`}>
+                                {r.chosen_option_text}
+                              </span>
+                            </div>
+                            
+                            {!r.is_correct && (
+                              <div className="flex items-start gap-2">
+                                <span className="mt-0.5 font-medium text-emerald-600 dark:text-emerald-500">Correct:</span>
+                                <span className="flex-1 font-medium text-zinc-900 dark:text-zinc-100">
+                                  {r.correct_option_text}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {r.explanation && (
+                            <div className="mt-2 rounded-lg bg-white/60 p-3 text-sm leading-relaxed text-zinc-600 dark:bg-black/20 dark:text-zinc-400">
+                              <strong className="font-semibold text-zinc-700 dark:text-zinc-300">Explanation: </strong>
+                              {r.explanation}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

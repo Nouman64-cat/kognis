@@ -70,6 +70,7 @@ class Question(SQLModel, table=True):
     text: str = Field(max_length=8192)
     options: list[str] = Field(sa_column=Column(JSON, nullable=False))
     correct_answer: int = Field(ge=0, le=3, description="Index 0-3 into options")
+    explanation: str | None = Field(default=None, max_length=1024)
 
     exam: Exam | None = Relationship(back_populates="questions")
     answers: list["CandidateAnswer"] = Relationship(back_populates="question", cascade_delete=True)

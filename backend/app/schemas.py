@@ -94,8 +94,11 @@ class SubmitExamRequest(BaseModel):
 class PerQuestionResult(BaseModel):
     question_id: int
     chosen_option_index: int
+    chosen_option_text: str
     correct_option_index: int
+    correct_option_text: str
     is_correct: bool
+    explanation: str | None
 
 
 class SubmitExamResponse(BaseModel):

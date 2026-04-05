@@ -823,7 +823,7 @@ export default function AdminPage() {
                 const r = (size - stroke) / 2;
                 const circ = 2 * Math.PI * r;
                 const offset = circ - (pct / 100) * circ;
-                const colour = pct >= 80 ? "#10b981" : pct >= 60 ? "#f59e0b" : "#ef4444";
+                const colour = pct >= 90 ? "#10b981" : pct >= 75 ? "#f59e0b" : "#ef4444";
                 return (
                   <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
                     <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="currentColor" strokeWidth={stroke} className="text-zinc-100 dark:text-zinc-800" />
@@ -863,7 +863,7 @@ export default function AdminPage() {
                           {[
                             { label: "Avg. Score", value: `${cStats?.avg_score.toFixed(1) || "0.0"}%`, sub: `${cStats?.total_attempts || 0} exam${cStats?.total_attempts !== 1 ? "s" : ""}`, colour: "violet" },
                             { label: "Best Score", value: `${cStats?.best_score.toFixed(1) || "0.0"}%`, sub: "personal best", colour: "emerald" },
-                            { label: "Pass Rate", value: `${cStats?.pass_rate.toFixed(0) || "0"}%`, sub: "≥60% threshold", colour: "amber" },
+                            { label: "Pass Rate", value: `${cStats?.pass_rate.toFixed(0) || "0"}%`, sub: "≥75% threshold", colour: "amber" },
                           ].map((card) => (
                             <div key={card.label} className="rounded-2xl border border-zinc-200/80 bg-zinc-50 p-4 dark:border-zinc-800/80 dark:bg-zinc-900/50">
                               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{card.label}</p>
@@ -892,7 +892,7 @@ export default function AdminPage() {
                               {cStats?.failed_count || 0} failed
                             </p>
                             <div className="mt-3 h-2 w-48 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                              <div className={`h-full rounded-full transition-all ${(cStats?.avg_score || 0) >= 80 ? "bg-emerald-500" : (cStats?.avg_score || 0) >= 60 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${cStats?.avg_score || 0}%` }} />
+                              <div className={`h-full rounded-full transition-all ${(cStats?.avg_score || 0) >= 90 ? "bg-emerald-500" : (cStats?.avg_score || 0) >= 75 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${cStats?.avg_score || 0}%` }} />
                             </div>
                           </div>
                         </div>
@@ -904,7 +904,7 @@ export default function AdminPage() {
                             <div className="space-y-3">
                               {candidateAttempts.map((a, i) => {
                                 const name = a.exam_title ?? a.exam_topics.join(", ");
-                                const colour = a.score_percent >= 80 ? "bg-emerald-500" : a.score_percent >= 60 ? "bg-amber-500" : "bg-red-500";
+                                const colour = a.score_percent >= 90 ? "bg-emerald-500" : a.score_percent >= 75 ? "bg-amber-500" : "bg-red-500";
                                 return (
                                   <div key={a.attempt_id} className="flex items-center gap-3">
                                     <span className="w-4 shrink-0 text-right text-xs font-bold text-zinc-400">{i + 1}</span>
@@ -912,8 +912,8 @@ export default function AdminPage() {
                                       <div className="flex items-center justify-between gap-2">
                                         <span className="truncate text-xs text-zinc-600 dark:text-zinc-400">{name}</span>
                                         <span className={`shrink-0 text-xs font-bold tabular-nums ${
-                                          a.score_percent >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                                          a.score_percent >= 60 ? "text-amber-600 dark:text-amber-400" :
+                                          a.score_percent >= 90 ? "text-emerald-600 dark:text-emerald-400" :
+                                          a.score_percent >= 75 ? "text-amber-600 dark:text-amber-400" :
                                           "text-red-600 dark:text-red-400"
                                         }`}>{a.score_percent.toFixed(1)}%</span>
                                       </div>
@@ -932,7 +932,7 @@ export default function AdminPage() {
                                 {candidateAttempts.map((a, i) => {
                                   const h = (a.score_percent / 100) * 72;
                                   const y = 80 - h;
-                                  const colour = a.score_percent >= 80 ? "#10b981" : a.score_percent >= 60 ? "#f59e0b" : "#ef4444";
+                                  const colour = a.score_percent >= 90 ? "#10b981" : a.score_percent >= 75 ? "#f59e0b" : "#ef4444";
                                   return (
                                     <g key={a.attempt_id}>
                                       <rect x={i * 40 + 6} y={y} width={28} height={h} rx={4} fill={colour} opacity={0.85} />
@@ -949,8 +949,8 @@ export default function AdminPage() {
                               </svg>
                               <div className="mt-2 flex gap-4 text-xs text-zinc-400">
                                 <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-emerald-500" />≥80% pass</span>
-                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-amber-400" />≥60% pass</span>
-                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-red-500" />&lt;60% fail</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-amber-400" />≥75% pass</span>
+                                <span className="flex items-center gap-1"><span className="inline-block h-1.5 w-4 rounded-full bg-red-500" />&lt;75% fail</span>
                               </div>
                             </div>
                           </div>
@@ -962,7 +962,7 @@ export default function AdminPage() {
                           <div className="space-y-3">
                             {candidateAttempts.map((a) => {
                               const pct = a.score_percent;
-                              const passed = pct >= 60;
+                              const passed = pct >= 75;
                               return (
                                 <div key={a.attempt_id}
                                   className={`rounded-xl border p-4 ${
@@ -980,8 +980,8 @@ export default function AdminPage() {
                                     </div>
                                     <div className="flex shrink-0 flex-col items-end">
                                       <span className={`text-lg font-black tabular-nums ${
-                                        pct >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                                        pct >= 60 ? "text-amber-600 dark:text-amber-400" :
+                                        pct >= 90 ? "text-emerald-600 dark:text-emerald-400" :
+                                        pct >= 75 ? "text-amber-600 dark:text-amber-400" :
                                         "text-red-600 dark:text-red-400"
                                       }`}>{pct.toFixed(1)}%</span>
                                       <span className={`text-xs font-semibold ${
@@ -992,7 +992,7 @@ export default function AdminPage() {
                                   <div className="mt-3 flex items-center gap-3">
                                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                                       <div className={`h-full rounded-full ${
-                                        pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-500"
+                                        pct >= 90 ? "bg-emerald-500" : pct >= 75 ? "bg-amber-500" : "bg-red-500"
                                       }`} style={{ width: `${pct}%` }} />
                                     </div>
                                     <span className="shrink-0 text-xs text-zinc-500">{a.correct_count}/{a.total_questions} correct</span>
@@ -1138,12 +1138,12 @@ export default function AdminPage() {
                         {filtered.map((a) => {
                           const pct = a.score_percent;
                           const scoreColor =
-                            pct >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                            pct >= 60 ? "text-amber-600 dark:text-amber-400" :
+                            pct >= 90 ? "text-emerald-600 dark:text-emerald-400" :
+                            pct >= 75 ? "text-amber-600 dark:text-amber-400" :
                             "text-red-600 dark:text-red-400";
                           const barColor =
-                            pct >= 80 ? "bg-emerald-500" :
-                            pct >= 60 ? "bg-amber-500" :
+                            pct >= 90 ? "bg-emerald-500" :
+                            pct >= 75 ? "bg-amber-500" :
                             "bg-red-500";
                           const isSelected = selectedCandidateEmail === a.candidate_email;
                           return (

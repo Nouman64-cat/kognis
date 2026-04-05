@@ -67,6 +67,7 @@ async def generate_exam(
                 text=q.text.strip(),
                 options=list(q.options),
                 correct_answer=q.correct_index,
+                explanation=q.explanation,
             )
         )
 
@@ -130,7 +131,7 @@ async def list_attempts(
                 created_at=a.created_at,
             )
         )
-    PASS_THRESHOLD_PERCENT = 60.0
+    PASS_THRESHOLD_PERCENT = 75.0
 
     global_stats = GlobalAnalytics(
         unique_candidates=len(set(a.candidate_email for a in attempts)),

@@ -47,8 +47,11 @@ export type SubmitExamResponse = {
   results: {
     question_id: number;
     chosen_option_index: number;
+    chosen_option_text: string;
     correct_option_index: number;
+    correct_option_text: string;
     is_correct: boolean;
+    explanation: string | null;
   }[];
 };
 
