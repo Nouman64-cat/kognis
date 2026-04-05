@@ -1,0 +1,1 @@
+"""Kognis API application package."""

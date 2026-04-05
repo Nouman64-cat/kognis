@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Kognis",
-  description: "",
+  description: "AI-powered employee evaluation and skill assessment platform.",
 };
 
 export default function RootLayout({
