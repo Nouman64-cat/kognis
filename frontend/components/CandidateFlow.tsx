@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github-dark.css";
+import { MarkdownBlock } from "@/components/MarkdownBlock";
 import {
   getExamQuestions,
   listExams,
@@ -12,6 +10,246 @@ import {
   submitExam,
 } from "@/lib/api";
 import type { ExamQuestionsResponse, ExamSummary, SubmitExamResponse } from "@/lib/types";
+
+function ResultsReview({
+  result,
+  bundle,
+  reviewQIdx,
+  setReviewQIdx,
+  inviteMode,
+  onAnotherExam,
+}: {
+  result: SubmitExamResponse;
+  bundle: ExamQuestionsResponse | null;
+  reviewQIdx: number;
+  setReviewQIdx: React.Dispatch<React.SetStateAction<number>>;
+  inviteMode: boolean;
+  onAnotherExam: () => void;
+}) {
+  const total = result.results.length;
+  if (total === 0) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4">
+        <p className="text-zinc-600 dark:text-zinc-400">No question results to review.</p>
+        <Link href="/" className="text-emerald-600 hover:underline">
+          ← Home
+        </Link>
+      </div>
+    );
+  }
+  const safeIdx = Math.min(Math.max(0, reviewQIdx), total - 1);
+  const r = result.results[safeIdx];
+  const q = bundle?.questions.find((x) => x.id === r.question_id);
+  const pct = result.score_percent;
+  const passed = pct >= 75;
+  const gradeLabel = pct >= 90 ? "Excellent" : pct >= 75 ? "Passed" : "Below pass";
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
+      <header className="z-20 shrink-0 border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={`rounded-xl px-4 py-3 text-white shadow-sm ${passed ? "bg-emerald-600" : "bg-red-600"}`}
+            >
+              <p className="text-xs font-medium text-white/80">{gradeLabel}</p>
+              <p className="text-3xl font-black tabular-nums">{pct}%</p>
+              <p className="text-xs text-white/80">
+                {result.correct_count} / {result.total_questions} correct
+              </p>
+            </div>
+            <Link
+              href="/"
+              className="shrink-0 text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              ← Home
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {result.results.map((res, i) => {
+              const isCurrent = i === safeIdx;
+              const ok = res.is_correct;
+              return (
+                <button
+                  key={res.question_id}
+                  type="button"
+                  onClick={() => setReviewQIdx(i)}
+                  title={`Question ${i + 1}`}
+                  className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold transition-all ${
+                    isCurrent
+                      ? "scale-110 bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+                      : ok
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                        : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200"
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Review <span className="font-semibold text-zinc-700 dark:text-zinc-300">{safeIdx + 1}</span> / {total}
+          </p>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+          <div
+            className={`rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${
+              r.is_correct ? "border-emerald-200 dark:border-emerald-800" : "border-red-200 dark:border-red-900"
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
+              <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                Question {safeIdx + 1} of {total}
+              </span>
+              <span
+                className={`text-sm font-bold ${r.is_correct ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+              >
+                {r.is_correct ? "Correct" : "Incorrect"}
+              </span>
+            </div>
+
+            {q ? (
+              <div className="border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Prompt</p>
+                <MarkdownBlock content={q.text} className="text-base text-zinc-900 dark:text-zinc-50" />
+              </div>
+            ) : (
+              <div className="border-b border-zinc-100 px-5 py-4 text-sm text-zinc-500 dark:border-zinc-800">
+                Question ID {r.question_id}
+              </div>
+            )}
+
+            <div className="space-y-4 px-5 py-5">
+              {q && q.options.length > 0 ? (
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">Options</p>
+                  <div className="space-y-2">
+                    {q.options.map((opt, idx) => {
+                      const isCorrectOpt = idx === r.correct_option_index;
+                      const isChosen = idx === r.chosen_option_index;
+                      const letter = String.fromCharCode(65 + idx);
+                      const borderCorrect =
+                        "border-emerald-500 bg-emerald-50/80 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/35";
+                      const borderWrongChosen =
+                        "border-red-500 bg-red-50/80 shadow-sm dark:border-red-500 dark:bg-red-950/30";
+                      const borderNeutral =
+                        "border-zinc-200 bg-zinc-50/40 dark:border-zinc-700 dark:bg-zinc-800/25";
+                      let rowClass = borderNeutral;
+                      if (isCorrectOpt) rowClass = borderCorrect;
+                      else if (isChosen && !isCorrectOpt) rowClass = borderWrongChosen;
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors ${rowClass}`}
+                        >
+                          <span
+                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
+                              isCorrectOpt
+                                ? "bg-emerald-600 text-white"
+                                : isChosen
+                                  ? "bg-red-600 text-white"
+                                  : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                            }`}
+                          >
+                            {letter}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">
+                                <MarkdownBlock content={opt} className="prose-sm" />
+                              </div>
+                              <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                                {isCorrectOpt && (
+                                  <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                    {isChosen ? "Correct — your answer" : "Correct answer"}
+                                  </span>
+                                )}
+                                {isChosen && !isCorrectOpt && (
+                                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                    Your answer
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Your answer</p>
+                    <MarkdownBlock content={r.chosen_option_text} className="prose-sm mt-2" />
+                  </div>
+                  {!r.is_correct && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-500">
+                        Correct answer
+                      </p>
+                      <MarkdownBlock content={r.correct_option_text} className="prose-sm mt-2" />
+                    </div>
+                  )}
+                </>
+              )}
+              {r.explanation ? (
+                <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800/50">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+                    Explanation
+                  </p>
+                  <MarkdownBlock content={r.explanation} className="prose-sm mt-2" />
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center justify-between gap-4">
+            <button
+              type="button"
+              onClick={() => setReviewQIdx((i) => Math.max(0, i - 1))}
+              disabled={safeIdx === 0}
+              className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </button>
+            {safeIdx < total - 1 ? (
+              <button
+                type="button"
+                onClick={() => setReviewQIdx((i) => Math.min(total - 1, i + 1))}
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            ) : inviteMode ? (
+              <Link
+                href="/"
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+              >
+                Done — Home
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={onAnotherExam}
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700"
+              >
+                Done — Another exam
+              </button>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
 
 const STORAGE_KEY = "kognis_candidate_email";
 
@@ -345,11 +583,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
                 {/* Question text */}
                 <div className="px-6 py-5">
-                  <div className="question-body text-base leading-relaxed text-zinc-900 dark:text-zinc-50">
-                    <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
-                      {currentQ.text}
-                    </ReactMarkdown>
-                  </div>
+                  <MarkdownBlock content={currentQ.text} className="text-base text-zinc-900 dark:text-zinc-50" />
                 </div>
 
                 {/* Options */}
@@ -383,9 +617,9 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                             setError(null);
                           }}
                         />
-                        <span className="text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">
-                          {opt}
-                        </span>
+                        <div className="min-w-0 flex-1 text-sm leading-relaxed text-zinc-800 dark:text-zinc-200">
+                          <MarkdownBlock content={opt} className="prose-sm" />
+                        </div>
                       </label>
                     );
                   })}
@@ -436,6 +670,22 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           </main>
         </div>
 
+      ) : step === "results" && result ? (
+        <ResultsReview
+          result={result}
+          bundle={bundle}
+          reviewQIdx={reviewQIdx}
+          setReviewQIdx={setReviewQIdx}
+          inviteMode={inviteMode}
+          onAnotherExam={() => {
+            stopTimer();
+            setStep("exams");
+            setBundle(null);
+            setResult(null);
+            setChoices({});
+            void goExams();
+          }}
+        />
       ) : (
         /* ── NON‑EXAM STEPS: centred layout ─────────────────────────────── */
         <div className="px-4 py-10">
@@ -460,9 +710,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
               )}
             </div>
 
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-              {step === "results" ? "Exam Results" : "Candidate Portal"}
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Candidate Portal</h1>
             <p className="mt-1 text-zinc-500 dark:text-zinc-400">
               {step === "register"
                 ? inviteMode ? "You were invited to an exam. Register to begin." : "Register once per email, then choose an exam."
@@ -572,75 +820,6 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
               />
             )}
 
-            {/* ── Results ── */}
-            {step === "results" && result && (() => {
-              const pct = result.score_percent;
-              const grade = pct >= 90 ? { label: "Excellent", colour: "emerald" } : pct >= 75 ? { label: "Good", colour: "amber" } : { label: "Needs work", colour: "red" };
-              return (
-                <div className="mt-8 space-y-6">
-                  {/* Score card */}
-                  <div className={`relative overflow-hidden rounded-2xl p-6 ${pct >= 90 ? "bg-emerald-600" : pct >= 75 ? "bg-amber-500" : "bg-red-500"}`}>
-                    <div className="absolute right-0 top-0 -mr-10 -mt-10 h-40 w-40 rounded-full bg-white/10" />
-                    <p className="text-sm font-semibold text-white/80">{grade.label}</p>
-                    <p className="mt-1 text-6xl font-black tabular-nums text-white">{pct}%</p>
-                    <p className="mt-2 text-sm text-white/75">
-                      {result.correct_count} correct out of {result.total_questions} questions
-                    </p>
-                  </div>
-
-                  {/* Review */}
-                  <div>
-                    <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Answer Review</h2>
-                    <div className="space-y-2">
-                      {result.results.map((r, i) => (
-                        <div key={r.question_id}
-                          className={`flex flex-col gap-3 rounded-xl border px-5 py-4 text-sm ${r.is_correct ? "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20" : "border-red-200 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20"}`}>
-                          <div className="flex items-center justify-between">
-                            <span className={`font-semibold ${r.is_correct ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-                              Question {i + 1} {r.is_correct ? "✓" : "✗"}
-                            </span>
-                          </div>
-                          
-                          <div className="grid gap-2">
-                            <div className="flex items-start gap-2">
-                              <span className="mt-0.5 font-medium text-zinc-500 dark:text-zinc-400">You:</span>
-                              <span className={`flex-1 ${r.is_correct ? "font-medium text-zinc-900 dark:text-zinc-100" : "line-through text-zinc-500 dark:text-zinc-500"}`}>
-                                {r.chosen_option_text}
-                              </span>
-                            </div>
-                            
-                            {!r.is_correct && (
-                              <div className="flex items-start gap-2">
-                                <span className="mt-0.5 font-medium text-emerald-600 dark:text-emerald-500">Correct:</span>
-                                <span className="flex-1 font-medium text-zinc-900 dark:text-zinc-100">
-                                  {r.correct_option_text}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {r.explanation && (
-                            <div className="mt-2 rounded-lg bg-white/60 p-3 text-sm leading-relaxed text-zinc-600 dark:bg-black/20 dark:text-zinc-400">
-                              <strong className="font-semibold text-zinc-700 dark:text-zinc-300">Explanation: </strong>
-                              {r.explanation}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {inviteMode ? (
-                    <Link href="/" className="inline-block text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">← Back to home</Link>
-                  ) : (
-                    <button type="button" onClick={() => { setStep("exams"); setBundle(null); setResult(null); setChoices({}); void goExams(); }}
-                      className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">
-                      ← Take another exam
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
           </div>
         </div>
       )}

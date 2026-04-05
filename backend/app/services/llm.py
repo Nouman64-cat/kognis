@@ -43,6 +43,10 @@ def _build_user_prompt(topics: list[str], complexity: str, total_questions: int)
         "correct_index 0-3 matching the position in options, and a concise 1-sentence explanation "
         "of why the correct answer is correct. "
         "Do not include numbering prefixes in the question text. "
+        "If a question includes any source code, configuration, or shell commands, you MUST format them as "
+        "GitHub-flavored Markdown fenced code blocks using triple backticks and a language tag when helpful "
+        "(e.g. ```python ... ``` or ```text ... ```). Use plain prose outside code blocks. "
+        "Format code inside the four options the same way when it contains code. "
         "Vary scenarios and avoid duplicate stems."
     )
 
