@@ -82,7 +82,7 @@ async def submit_exam(
             PerQuestionResult(
                 question_id=qid,
                 chosen_option_index=chosen,
-                chosen_option_text=q.options[chosen] if 0 <= chosen < len(q.options) else "Unknown",
+                chosen_option_text=q.options[chosen] if 0 <= chosen < len(q.options) else "Not answered",
                 correct_option_index=q.correct_answer,
                 correct_option_text=q.options[q.correct_answer] if 0 <= q.correct_answer < len(q.options) else "Unknown",
                 is_correct=is_ok,

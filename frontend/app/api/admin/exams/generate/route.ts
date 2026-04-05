@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+/** If anything still proxies through here, allow long exam generation (many LLM batches). */
+export const maxDuration = 800;
+
 function backendBase(): string {
   const b = process.env.BACKEND_URL ?? process.env.NEXT_PUBLIC_API_URL;
   if (!b) throw new Error("BACKEND_URL or NEXT_PUBLIC_API_URL must be set");

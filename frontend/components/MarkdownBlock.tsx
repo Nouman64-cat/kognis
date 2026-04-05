@@ -21,7 +21,7 @@ export function MarkdownBlock({ content, className = "" }: Props) {
   const md = ensureFencedCode(content);
   return (
     <div
-      className={`question-body prose prose-zinc max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:my-3 prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none ${className}`}
+      className={`question-body prose prose-zinc max-w-none dark:prose-invert prose-p:leading-relaxed prose-pre:my-3 prose-pre:bg-zinc-900/5 dark:prose-pre:bg-black/20 prose-pre:border prose-pre:border-zinc-200 dark:prose-pre:border-target-zinc-800/60 prose-pre:p-4 prose-code:before:content-none prose-code:after:content-none ${className}`}
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
         {md}

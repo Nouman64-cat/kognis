@@ -5,13 +5,14 @@
  */
 
 const CODE_START =
-  /^\s*(async\s+def\s|def\s|class\s|@\w+|import\s|from\s+\w+\s+import|print\(|if\s|for\s|while\s|elif\s|else:|try:|except\b|with\s|raise\s)/;
+  /^\s*(async\s+def\s|def\s|class\s|@\w+|import\s|from\s+\w+\s+import|print\(|if\s|for\s|while\s|elif\s|else:|try:|except\b|with\s|raise\s|\[.*\]|\{.*\}|\w+\s*=\s*(?:\[|\{|\d|\"|\'|True|False|None))/;
 
 function isCodeStartLine(line: string): boolean {
   const s = line.trim();
   if (!s) return false;
   if (CODE_START.test(s)) return true;
-  if (/^(print|exec|eval)\(/.test(s)) return true;
+  // If the line is JUST a bracketed literal like "[1, 2, 3]" or "{'a': 1}"
+  if (/^\[.*\]\s*$/.test(s) || /^\{.*\}\s*$/.test(s)) return true;
   return false;
 }
 

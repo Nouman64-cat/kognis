@@ -9,7 +9,7 @@ import {
   registerCandidate,
   submitExam,
 } from "@/lib/api";
-import type { ExamQuestionsResponse, ExamSummary, SubmitExamResponse } from "@/lib/types";
+import type { ExamQuestionsResponse, ExamSummary, QuestionPublic, SubmitExamResponse } from "@/lib/types";
 
 function ResultsReview({
   result,
@@ -129,15 +129,14 @@ function ResultsReview({
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">Options</p>
                   <div className="space-y-2">
                     {q.options.map((opt, idx) => {
+                      const letter = String.fromCharCode(65 + idx);
                       const isCorrectOpt = idx === r.correct_option_index;
                       const isChosen = idx === r.chosen_option_index;
-                      const letter = String.fromCharCode(65 + idx);
-                      const borderCorrect =
-                        "border-emerald-500 bg-emerald-50/80 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/35";
-                      const borderWrongChosen =
-                        "border-red-500 bg-red-50/80 shadow-sm dark:border-red-500 dark:bg-red-950/30";
-                      const borderNeutral =
-                        "border-zinc-200 bg-zinc-50/40 dark:border-zinc-700 dark:bg-zinc-800/25";
+                      
+                      const borderCorrect = "border-emerald-500 bg-emerald-50/80 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/35";
+                      const borderWrongChosen = "border-red-500 bg-red-50/80 shadow-sm dark:border-red-500 dark:bg-red-950/30";
+                      const borderNeutral = "border-zinc-200 bg-zinc-50/40 dark:border-zinc-700 dark:bg-zinc-800/25";
+
                       let rowClass = borderNeutral;
                       if (isCorrectOpt) rowClass = borderCorrect;
                       else if (isChosen && !isCorrectOpt) rowClass = borderWrongChosen;
@@ -184,12 +183,14 @@ function ResultsReview({
                 </div>
               ) : (
                 <>
-                  <div>
+                  <div className="rounded-xl border border-dashed border-zinc-200 p-4 dark:border-zinc-800">
                     <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Your answer</p>
-                    <MarkdownBlock content={r.chosen_option_text} className="prose-sm mt-2" />
+                    <div className="mt-2 text-sm text-zinc-500 italic">
+                      {r.chosen_option_index === -1 ? "Not answered" : r.chosen_option_text}
+                    </div>
                   </div>
                   {!r.is_correct && (
-                    <div>
+                    <div className="mt-4">
                       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-500">
                         Correct answer
                       </p>
@@ -303,6 +304,58 @@ function ChevronRight({ className }: { className?: string }) {
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );
+}
+
+function ExamQuestionNav({
+  questions,
+  choices,
+  currentQIdx,
+  onSelect,
+  variant,
+}: {
+  questions: QuestionPublic[];
+  choices: Record<number, number>;
+  currentQIdx: number;
+  onSelect: (index: number) => void;
+  variant: "sidebar" | "strip";
+}) {
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (variant !== "sidebar") return;
+    btnRefs.current[currentQIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentQIdx, variant]);
+
+  const sizeClass = variant === "sidebar" ? "h-8 w-8" : "h-7 w-7 shrink-0";
+
+  const buttons = questions.map((q, i) => {
+    const isAnswered = choices[q.id] !== undefined;
+    const isCurrent = i === currentQIdx;
+    return (
+      <button
+        key={q.id}
+        type="button"
+        ref={variant === "sidebar" ? (el) => { btnRefs.current[i] = el; } : undefined}
+        onClick={() => onSelect(i)}
+        title={`Question ${i + 1}${isAnswered ? " (answered)" : ""}`}
+        className={`flex ${sizeClass} items-center justify-center rounded-lg text-xs font-bold transition-all
+          ${isCurrent
+            ? "scale-110 bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+            : isAnswered
+              ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300"
+              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+          }`}
+      >
+        {i + 1}
+      </button>
+    );
+  });
+
+  if (variant === "strip") {
+    return <div className="flex w-max gap-1.5">{buttons}</div>;
+  }
+
+  return <div className="grid grid-cols-5 gap-1.5">{buttons}</div>;
 }
 
 export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
@@ -423,7 +476,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     try {
       const answers = currentBundle.questions.map((q) => ({
         question_id: q.id,
-        chosen_option_index: currentChoices[q.id] ?? 0,
+        chosen_option_index: currentChoices[q.id] ?? -1,
       }));
       const res = await submitExam(currentBundle.exam.id, email.trim().toLowerCase(), answers);
       setResult(res); setReviewQIdx(0); setStep("results");
@@ -453,11 +506,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     setLoading(false);
   };
 
-  const onSubmitExam = async () => {
+  const onSubmitExam = async (force: boolean = false) => {
     if (!bundle) return;
     const unanswered = bundle.questions.filter((q) => choices[q.id] === undefined);
-    if (unanswered.length > 0) {
-      setError(`${unanswered.length} question${unanswered.length > 1 ? "s" : ""} unanswered. Navigate using the dots above to answer them.`);
+    if (!force && unanswered.length > 0) {
+      setError(`${unanswered.length} question${unanswered.length > 1 ? "s" : ""} unanswered. Use the question list to jump to each one.`);
       return;
     }
     setError(null);
@@ -480,9 +533,9 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       {step === "take" && bundle && currentQ ? (
         <div className="flex h-screen flex-col overflow-hidden">
 
-          {/* ── Sticky header bar ─────────────────────────────────────────── */}
+          {/* ── Sticky header bar (no question grid — nav is sidebar / mobile strip) ── */}
           <header className="z-20 shrink-0 border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
-            <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 sm:px-6">
+            <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
 
               {/* Row 1: Exam name + timer */}
               <div className="flex items-center justify-between gap-4">
@@ -490,7 +543,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   <p className="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                     {examDisplayName(bundle.exam)}
                   </p>
-                  <p className="text-xs text-zinc-400 dark:text-zinc-500 capitalize">
+                  <p className="text-xs text-zinc-400 capitalize dark:text-zinc-500">
                     {bundle.exam.complexity}
                     {bundle.exam.duration_minutes ? ` · ${bundle.exam.duration_minutes} min` : ""}
                   </p>
@@ -527,41 +580,56 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   Q {currentQIdx + 1} / {totalQ}
                 </span>
               </div>
-
-              {/* Row 3: Question dot navigator */}
-              <div className="flex flex-wrap gap-1.5">
-                {bundle.questions.map((q, i) => {
-                  const isAnswered = choices[q.id] !== undefined;
-                  const isCurrent = i === currentQIdx;
-                  return (
-                    <button
-                      key={q.id}
-                      type="button"
-                      onClick={() => setCurrentQIdx(i)}
-                      title={`Question ${i + 1}${isAnswered ? " (answered)" : ""}`}
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold transition-all
-                        ${isCurrent
-                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/30 scale-110"
-                          : isAnswered
-                            ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300"
-                            : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
-                        }`}
-                    >
-                      {i + 1}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           </header>
 
-          {/* ── Scrollable question area ────────────────────────────────── */}
-          <main className="flex-1 overflow-y-auto">
+          {/* Mobile: horizontal scroll strip for question numbers */}
+          <nav
+            className="md:hidden shrink-0 overflow-x-auto border-b border-zinc-200 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/50"
+            aria-label="Question navigation"
+          >
+            <ExamQuestionNav
+              questions={bundle.questions}
+              choices={choices}
+              currentQIdx={currentQIdx}
+              onSelect={setCurrentQIdx}
+              variant="strip"
+            />
+          </nav>
+
+          <div className="flex min-h-0 flex-1">
+            {/* Desktop: left sidebar with scrollable question grid */}
+            <aside className="hidden min-h-0 w-[11.5rem] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/90 dark:border-zinc-800 dark:bg-zinc-900/40 md:flex lg:w-52">
+              <div className="shrink-0 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Questions</p>
+              </div>
+              <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2" aria-label="Question navigation">
+                <ExamQuestionNav
+                  questions={bundle.questions}
+                  choices={choices}
+                  currentQIdx={currentQIdx}
+                  onSelect={setCurrentQIdx}
+                  variant="sidebar"
+                />
+              </nav>
+            </aside>
+
+            {/* ── Scrollable question area ────────────────────────────────── */}
+            <main className="min-w-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
 
               {error && (
-                <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
-                  {error}
+                <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
+                  <p>{error}</p>
+                  {error.includes("unanswered") && (
+                    <button
+                      type="button"
+                      onClick={() => void onSubmitExam(true)}
+                      className="w-fit text-xs font-bold uppercase tracking-wider text-amber-900 underline decoration-amber-900/30 underline-offset-4 hover:decoration-amber-900"
+                    >
+                      Submit anyway
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -667,7 +735,8 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                 )}
               </div>
             </div>
-          </main>
+            </main>
+          </div>
         </div>
 
       ) : step === "results" && result ? (

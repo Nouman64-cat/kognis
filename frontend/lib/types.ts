@@ -54,7 +54,7 @@ export type SubmitExamResponse = {
   total_questions: number;
   results: {
     question_id: number;
-    chosen_option_index: number;
+    chosen_option_index: number; // -1 if unanswered
     chosen_option_text: string;
     correct_option_index: number;
     correct_option_text: string;

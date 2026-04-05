@@ -123,7 +123,7 @@ class ExamQuestionsResponse(BaseModel):
 
 class AnswerItem(BaseModel):
     question_id: int = Field(gt=0)
-    chosen_option_index: int = Field(ge=0, le=3)
+    chosen_option_index: int = Field(ge=-1, le=3, description="-1 means unanswered")
 
 
 class SubmitExamRequest(BaseModel):
@@ -133,7 +133,7 @@ class SubmitExamRequest(BaseModel):
 
 class PerQuestionResult(BaseModel):
     question_id: int
-    chosen_option_index: int
+    chosen_option_index: int = Field(description="-1 means unanswered")
     chosen_option_text: str
     correct_option_index: int
     correct_option_text: str

@@ -107,7 +107,8 @@ export async function generateExamAdmin(body: {
   const token = getAdminToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch("/api/admin/exams/generate", {
+  // Call FastAPI directly (same as listAttempts). The Next.js proxy route times out on long LLM runs (~5min).
+  const res = await fetch(`${base()}/api/v1/admin/exams/generate`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
