@@ -12,8 +12,19 @@ from app.config import LLMProvider, Settings
 
 
 class _LLMQuestion(BaseModel):
-    text: str = Field(min_length=1, max_length=8192)
-    options: list[str] = Field(min_length=4, max_length=4)
+    text: str = Field(
+        min_length=1,
+        max_length=8192,
+        description=(
+            "Question stem in GitHub-flavored Markdown. Any source code MUST be inside fenced blocks "
+            "like ```python ... ```, never as loose plain text."
+        ),
+    )
+    options: list[str] = Field(
+        min_length=4,
+        max_length=4,
+        description="Four options; use ``` fences for any option that contains code.",
+    )
     correct_index: int = Field(ge=0, le=3)
     explanation: str = Field(min_length=1, max_length=1024, description="Short reason explaining why the correct answer is right.")
 
@@ -43,10 +54,15 @@ def _build_user_prompt(topics: list[str], complexity: str, total_questions: int)
         "correct_index 0-3 matching the position in options, and a concise 1-sentence explanation "
         "of why the correct answer is correct. "
         "Do not include numbering prefixes in the question text. "
-        "If a question includes any source code, configuration, or shell commands, you MUST format them as "
-        "GitHub-flavored Markdown fenced code blocks using triple backticks and a language tag when helpful "
-        "(e.g. ```python ... ``` or ```text ... ```). Use plain prose outside code blocks. "
-        "Format code inside the four options the same way when it contains code. "
+        "CRITICAL — Markdown code blocks: If the stem or any option contains ANY programming code, shell "
+        "commands, SQL, JSON, or multi-line snippets, you MUST wrap EVERY such snippet in a fenced block "
+        "with a language tag (```python, ```javascript, ```sql, ```text, etc.). Put normal English sentences "
+        "outside fences. Never paste code as a single unbroken line of prose without fences. "
+        "BAD example (forbidden — no fences, code runs into prose): "
+        '"What prints?\\ndef foo(): return 1\\nprint(foo())" '
+        "GOOD example: prose line, then ```python\\ndef foo():\\n    return 1\\nprint(foo())\\n``` "
+        "Use separate fenced blocks if there are multiple distinct snippets. "
+        "Format code inside options the same way when an option contains code. "
         "Vary scenarios and avoid duplicate stems."
     )
 
@@ -78,7 +94,11 @@ async def _generate_openai(settings: Settings, prompt: str, total_questions: int
         messages=[
             {
                 "role": "system",
-                "content": "You write high-quality employment screening MCQs. Output only via the required schema.",
+                "content": (
+                    "You write high-quality employment screening MCQs. Output only via the required schema. "
+                    "In question text and options, always put programming code in markdown fenced blocks "
+                    "(```python etc.), never as unstructured plain text."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
@@ -107,10 +127,16 @@ def _anthropic_tool_def() -> dict[str, Any]:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "text": {"type": "string"},
+                            "text": {
+                                "type": "string",
+                                "description": "GFM markdown; all code in ```language fences, never loose plain text.",
+                            },
                             "options": {
                                 "type": "array",
-                                "items": {"type": "string"},
+                                "items": {
+                                    "type": "string",
+                                    "description": "Use ``` fences when the option contains code.",
+                                },
                                 "minItems": 4,
                                 "maxItems": 4,
                             },
@@ -138,7 +164,11 @@ async def _generate_anthropic(settings: Settings, prompt: str, total_questions: 
     message = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=8192,
-        system="You write high-quality employment screening MCQs. Use the provided tool exactly once.",
+        system=(
+            "You write high-quality employment screening MCQs. Use the provided tool exactly once. "
+            "In question text and options, always put programming code in markdown fenced blocks "
+            "(```python etc.), never as unstructured plain text."
+        ),
         messages=[{"role": "user", "content": prompt}],
         tools=[tool],
         tool_choice={"type": "tool", "name": tool["name"]},
