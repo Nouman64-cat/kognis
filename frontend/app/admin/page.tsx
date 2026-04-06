@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Eye,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -28,9 +29,16 @@ import {
   Zap,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
-import { generateExamAdmin, listAttempts, listExams, listQuestions, deleteAttempt } from "@/lib/api";
+import { generateExamAdmin, getAttemptDetail, listAttempts, listExams, listQuestions, deleteAttempt } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
-import type { AttemptRow, CandidateAnalytics, ExamSummary, GlobalAnalytics, PaginatedQuestionsResponse } from "@/lib/types";
+import type {
+  AttemptDetailResponse,
+  AttemptRow,
+  CandidateAnalytics,
+  ExamSummary,
+  GlobalAnalytics,
+  PaginatedQuestionsResponse,
+} from "@/lib/types";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
 
 function formatDate(isoStr: string) {
@@ -113,6 +121,10 @@ export default function AdminPage() {
   const [retakeConfirmId, setRetakeConfirmId] = useState<number | null>(null);
   const [retakeLoading, setRetakeLoading] = useState(false);
   const [retakeBanner, setRetakeBanner] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [attemptDetailOpen, setAttemptDetailOpen] = useState(false);
+  const [attemptDetail, setAttemptDetail] = useState<AttemptDetailResponse | null>(null);
+  const [attemptDetailLoading, setAttemptDetailLoading] = useState(false);
+  const [attemptDetailError, setAttemptDetailError] = useState<string | null>(null);
   const [questionsData, setQuestionsData] = useState<PaginatedQuestionsResponse | null>(null);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
@@ -169,6 +181,27 @@ export default function AdminPage() {
     } finally {
       setAttemptsLoading(false);
     }
+  }, []);
+
+  const openAttemptDetail = useCallback(async (attemptId: number) => {
+    setAttemptDetailOpen(true);
+    setAttemptDetailLoading(true);
+    setAttemptDetailError(null);
+    setAttemptDetail(null);
+    try {
+      const d = await getAttemptDetail(attemptId);
+      setAttemptDetail(d);
+    } catch (e) {
+      setAttemptDetailError(e instanceof Error ? e.message : "Could not load attempt detail");
+    } finally {
+      setAttemptDetailLoading(false);
+    }
+  }, []);
+
+  const closeAttemptDetail = useCallback(() => {
+    setAttemptDetailOpen(false);
+    setAttemptDetail(null);
+    setAttemptDetailError(null);
   }, []);
 
   useEffect(() => {
@@ -1307,13 +1340,14 @@ export default function AdminPage() {
                                   <th className="px-5 py-3">Assessment Context</th>
                                   <th className="px-5 py-3">Timeline</th>
                                   <th className="px-5 py-3 text-right">Result</th>
+                                  <th className="px-5 py-3 text-right">Breakdown</th>
                                   <th className="px-5 py-3 text-right">Actions</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                                 {retakeBanner && (
                                   <tr>
-                                    <td colSpan={4} className="px-5 pb-2 pt-0">
+                                    <td colSpan={5} className="px-5 pb-2 pt-0">
                                       <div className={`rounded-lg px-3 py-2 text-xs font-medium ${
                                         retakeBanner.type === "success"
                                           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
@@ -1347,6 +1381,16 @@ export default function AdminPage() {
                                         }`}>
                                           {pct.toFixed(0)}%
                                         </span>
+                                      </td>
+                                      <td className="px-5 py-3 text-right">
+                                        <button
+                                          type="button"
+                                          onClick={() => void openAttemptDetail(a.attempt_id)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[10px] font-bold text-zinc-700 shadow-sm transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/40"
+                                        >
+                                          <Eye className="h-3 w-3 shrink-0" aria-hidden />
+                                          View
+                                        </button>
                                       </td>
                                       <td className="px-5 py-3 text-right">
                                         {isConfirming ? (
@@ -1495,6 +1539,150 @@ export default function AdminPage() {
             </div>
         </main>
       </div>
+
+      {attemptDetailOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onClick={closeAttemptDetail}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attempt-detail-title"
+            className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+              <div className="min-w-0">
+                <h2 id="attempt-detail-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  {attemptDetailLoading ? "Loading attempt…" : attemptDetail?.exam_title ?? attemptDetail?.exam_topics.join(", ") ?? "Attempt detail"}
+                </h2>
+                {attemptDetail && (
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    {attemptDetail.candidate_name} · {attemptDetail.candidate_email}
+                    {" · "}
+                    {new Date(attemptDetail.created_at).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={closeAttemptDetail}
+                className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {attemptDetailError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+                  {attemptDetailError}
+                </div>
+              )}
+              {attemptDetailLoading && !attemptDetailError && (
+                <div className="flex justify-center py-12">
+                  <RefreshCw className="h-8 w-8 animate-spin text-zinc-400" />
+                </div>
+              )}
+              {attemptDetail && !attemptDetailLoading && (
+                <>
+                  <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-800/50">
+                    <span className="font-semibold text-zinc-700 dark:text-zinc-200">
+                      Score: {attemptDetail.score_percent.toFixed(1)}%
+                    </span>
+                    <span className="text-zinc-400">·</span>
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {attemptDetail.correct_count} / {attemptDetail.total_questions} correct
+                    </span>
+                    <span className="text-zinc-400">·</span>
+                    <span className="text-zinc-500">{attemptDetail.exam_complexity}</span>
+                  </div>
+                  <ol className="space-y-4">
+                    {attemptDetail.questions.map((q, qi) => (
+                      <li
+                        key={q.question_id}
+                        className={`rounded-xl border bg-white p-4 dark:bg-zinc-900 ${
+                          q.is_correct ? "border-emerald-200 dark:border-emerald-800" : "border-red-200 dark:border-red-900"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
+                          <span className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+                            Question {qi + 1}
+                          </span>
+                          <span
+                            className={`text-xs font-bold ${q.is_correct ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
+                          >
+                            {q.is_correct ? "Correct" : "Incorrect"}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <MarkdownBlock content={q.text} className="text-sm text-zinc-900 dark:text-zinc-50" />
+                        </div>
+                        <ul className="mt-4 space-y-2">
+                          {q.options.map((opt, oi) => {
+                            const letter = String.fromCharCode(65 + oi);
+                            const isCorrectOpt = oi === q.correct_option_index;
+                            const isChosen = oi === q.chosen_option_index;
+                            let row =
+                              "border-zinc-200 bg-zinc-50/50 dark:border-zinc-700 dark:bg-zinc-800/30";
+                            if (isCorrectOpt) {
+                              row = "border-emerald-500 bg-emerald-50/90 dark:border-emerald-600 dark:bg-emerald-950/35";
+                            } else if (isChosen && !isCorrectOpt) {
+                              row = "border-red-500 bg-red-50/90 dark:border-red-600 dark:bg-red-950/35";
+                            }
+                            return (
+                              <li
+                                key={oi}
+                                className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-xs ${row}`}
+                              >
+                                <span
+                                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold ${
+                                    isCorrectOpt
+                                      ? "bg-emerald-600 text-white"
+                                      : isChosen
+                                        ? "bg-red-600 text-white"
+                                        : "bg-zinc-200 text-zinc-600 dark:bg-zinc-600 dark:text-zinc-300"
+                                  }`}
+                                >
+                                  {letter}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <MarkdownBlock content={opt} className="prose-sm text-zinc-800 dark:text-zinc-200" />
+                                  <div className="mt-1 flex flex-wrap gap-1.5">
+                                    {isCorrectOpt && (
+                                      <span className="rounded bg-emerald-600/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+                                        Correct answer
+                                      </span>
+                                    )}
+                                    {isChosen && (
+                                      <span className="rounded bg-zinc-700 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white dark:bg-zinc-600">
+                                        Candidate chose
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        {q.explanation ? (
+                          <div className="mt-3 rounded-lg bg-zinc-50 px-3 py-2 text-xs dark:bg-zinc-800/60">
+                            <p className="font-semibold text-zinc-600 dark:text-zinc-400">Explanation</p>
+                            <MarkdownBlock content={q.explanation} className="prose-sm mt-1 text-zinc-700 dark:text-zinc-300" />
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

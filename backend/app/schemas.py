@@ -195,6 +195,34 @@ class ListAttemptsResponse(BaseModel):
     candidate_stats: dict[str, CandidateAnalytics]
 
 
+class AttemptQuestionDetail(BaseModel):
+    question_id: int
+    text: str
+    options: list[str]
+    correct_option_index: int
+    chosen_option_index: int
+    chosen_option_text: str
+    correct_option_text: str
+    is_correct: bool
+    explanation: str | None
+
+
+class AttemptDetailResponse(BaseModel):
+    attempt_id: int
+    candidate_id: int
+    candidate_name: str
+    candidate_email: str
+    exam_id: int
+    exam_title: str | None
+    exam_topics: list[str]
+    exam_complexity: str
+    score_percent: float
+    correct_count: int
+    total_questions: int
+    created_at: datetime
+    questions: list[AttemptQuestionDetail]
+
+
 class QuestionAdminView(BaseModel):
     id: int
     exam_id: int

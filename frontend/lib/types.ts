@@ -109,6 +109,34 @@ export type ListAttemptsResponse = {
   candidate_stats: Record<string, CandidateAnalytics>;
 };
 
+export type AttemptQuestionDetail = {
+  question_id: number;
+  text: string;
+  options: string[];
+  correct_option_index: number;
+  chosen_option_index: number;
+  chosen_option_text: string;
+  correct_option_text: string;
+  is_correct: boolean;
+  explanation: string | null;
+};
+
+export type AttemptDetailResponse = {
+  attempt_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  exam_id: number;
+  exam_title: string | null;
+  exam_topics: string[];
+  exam_complexity: string;
+  score_percent: number;
+  correct_count: number;
+  total_questions: number;
+  created_at: string;
+  questions: AttemptQuestionDetail[];
+};
+
 export type QuestionAdminView = {
   id: number;
   exam_id: number;

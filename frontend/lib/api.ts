@@ -1,6 +1,7 @@
 import { getAdminToken } from "./admin-token";
 import type {
   AdminGenerateResponse,
+  AttemptDetailResponse,
   CandidatePublic,
   ExamQuestionsResponse,
   ExamSummary,
@@ -152,6 +153,18 @@ export async function listAttempts(): Promise<ListAttemptsResponse> {
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<ListAttemptsResponse>;
+}
+
+export async function getAttemptDetail(attemptId: number): Promise<AttemptDetailResponse> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${base()}/api/v1/admin/attempts/${attemptId}`, {
+    cache: "no-store",
+    headers,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<AttemptDetailResponse>;
 }
 
 export async function listQuestions(page: number = 1, pageSize: number = 10): Promise<PaginatedQuestionsResponse> {

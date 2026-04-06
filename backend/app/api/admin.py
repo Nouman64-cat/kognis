@@ -5,10 +5,12 @@ from sqlmodel import select
 
 from app.config import get_settings
 from app.deps import db_session, verify_admin
-from app.models import Exam, ExamAttempt, Question
+from app.models import CandidateAnswer, Exam, ExamAttempt, Question
 from app.schemas import (
     AdminGenerateExamRequest,
     AdminGenerateExamResponse,
+    AttemptDetailResponse,
+    AttemptQuestionDetail,
     AttemptRow,
     CandidateAnalytics,
     GlobalAnalytics,
@@ -173,6 +175,90 @@ async def list_attempts(
         attempts=attempts,
         global_stats=global_stats,
         candidate_stats=candidate_stats,
+    )
+
+
+@router.get(
+    "/attempts/{attempt_id}",
+    response_model=AttemptDetailResponse,
+)
+async def get_attempt_detail(
+    attempt_id: int,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> AttemptDetailResponse:
+    """Return one attempt with full question text, options, and correct vs chosen answers."""
+    result = await session.execute(
+        select(ExamAttempt)
+        .where(ExamAttempt.id == attempt_id)
+        .options(
+            selectinload(ExamAttempt.candidate),
+            selectinload(ExamAttempt.exam),
+            selectinload(ExamAttempt.candidate_answers).selectinload(CandidateAnswer.question),
+        )
+    )
+    att = result.scalar_one_or_none()
+    if att is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Attempt {attempt_id} not found.",
+        )
+    if att.candidate is None or att.exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Attempt data is incomplete.",
+        )
+
+    items: list[AttemptQuestionDetail] = []
+    for ca in sorted(att.candidate_answers or [], key=lambda x: x.question_id):
+        q = ca.question
+        if q is None or q.id is None:
+            continue
+        chosen = ca.chosen_option
+        correct_idx = q.correct_answer
+        opts = list(q.options) if q.options else []
+        chosen_text = (
+            opts[chosen]
+            if 0 <= chosen < len(opts)
+            else "Not answered"
+        )
+        correct_text = (
+            opts[correct_idx]
+            if 0 <= correct_idx < len(opts)
+            else "Unknown"
+        )
+        items.append(
+            AttemptQuestionDetail(
+                question_id=q.id,
+                text=q.text,
+                options=opts,
+                correct_option_index=correct_idx,
+                chosen_option_index=chosen,
+                chosen_option_text=chosen_text,
+                correct_option_text=correct_text,
+                is_correct=ca.is_correct,
+                explanation=q.explanation,
+            )
+        )
+
+    correct_count = sum(1 for x in items if x.is_correct)
+    ex = att.exam
+    topics = ex.topics if ex.topics else [ex.topic]
+
+    return AttemptDetailResponse(
+        attempt_id=att.id,
+        candidate_id=att.candidate_id,
+        candidate_name=att.candidate.full_name,
+        candidate_email=att.candidate.email,
+        exam_id=att.exam_id,
+        exam_title=ex.title,
+        exam_topics=topics,
+        exam_complexity=ex.complexity,
+        score_percent=round(att.final_score, 2),
+        correct_count=correct_count,
+        total_questions=len(items),
+        created_at=att.created_at,
+        questions=items,
     )
 
 
