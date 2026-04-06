@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.deps import db_session
-from app.models import Candidate, Exam, Question
+from app.models import Candidate, Exam, ExamAttempt, Question
 from app.schemas import (
     CandidatePublic,
     CandidateRegisterRequest,
@@ -15,6 +15,7 @@ from app.schemas import (
     QuestionPublic,
     parse_topic_mix_from_storage,
 )
+from app.services.exam_attempt_result import build_submit_response_from_attempt
 
 router = APIRouter()
 
@@ -78,6 +79,49 @@ async def get_exam_questions(
     exam = exam_res.scalar_one_or_none()
     if exam is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
+
+    att_res = await session.execute(
+        select(ExamAttempt).where(
+            ExamAttempt.candidate_id == candidate.id,
+            ExamAttempt.exam_id == exam_id,
+        )
+    )
+    existing_attempt = att_res.scalar_one_or_none()
+    if existing_attempt is not None:
+        submit_resp = await build_submit_response_from_attempt(
+            session,
+            exam_id=exam_id,
+            candidate_id=candidate.id,
+            attempt=existing_attempt,
+        )
+        q_res = await session.execute(
+            select(Question).where(Question.exam_id == exam_id).order_by(Question.id)
+        )
+        q_rows = q_res.scalars().all()
+        exam_summary = ExamSummary(
+            id=exam.id,
+            title=exam.title,
+            topics=exam.topics if exam.topics else [exam.topic],
+            complexity=exam.complexity,
+            total_questions=exam.total_questions,
+            duration_minutes=exam.duration_minutes,
+            scheduled_for=exam.scheduled_for,
+            created_at=exam.created_at,
+            topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
+        )
+        questions_out = [
+            QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in q_rows if q.id is not None
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "already_submitted",
+                "message": "You have already submitted this exam.",
+                "result": submit_resp.model_dump(mode="json"),
+                "exam": exam_summary.model_dump(mode="json"),
+                "questions": [q.model_dump(mode="json") for q in questions_out],
+            },
+        )
 
     if exam.scheduled_for and exam.scheduled_for > datetime.now(timezone.utc):
         questions = []

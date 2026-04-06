@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { MarkdownBlock } from "@/components/MarkdownBlock";
 import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import {
+  AlreadySubmittedError,
   getExamQuestions,
   listExams,
   registerCandidate,
@@ -20,6 +21,7 @@ function ResultsReview({
   inviteMode,
   onAnotherExam,
   onInviteDone,
+  prefaceNotice,
 }: {
   result: SubmitExamResponse;
   bundle: ExamQuestionsResponse | null;
@@ -28,6 +30,7 @@ function ResultsReview({
   inviteMode: boolean;
   onAnotherExam: () => void;
   onInviteDone: () => void;
+  prefaceNotice?: string | null;
 }) {
   const total = result.results.length;
   if (total === 0) {
@@ -108,6 +111,14 @@ function ResultsReview({
 
         <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+          {prefaceNotice ? (
+            <div
+              className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+              role="status"
+            >
+              {prefaceNotice}
+            </div>
+          ) : null}
           <div
             className={`rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${
               r.is_correct ? "border-emerald-200 dark:border-emerald-800" : "border-red-200 dark:border-red-900"
@@ -470,6 +481,8 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   // Current question index for one-at-a-time navigation
   const [currentQIdx, setCurrentQIdx] = useState(0);
   const [reviewQIdx, setReviewQIdx] = useState(0);
+  /** Shown above results when user hits already-submitted on load (vs fresh submit). */
+  const [resultsPrefaceNotice, setResultsPrefaceNotice] = useState<string | null>(null);
 
   // ─── Timer ────────────────────────────────────────────────────────────────
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
@@ -553,10 +566,33 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     finally { setLoading(false); }
   }, []);
 
+  const applyAlreadySubmitted = useCallback((e: AlreadySubmittedError) => {
+    clearExamSession();
+    setResult(e.result);
+    setBundle(e.bundle);
+    setSelectedExam({
+      id: e.bundle.exam.id,
+      title: e.bundle.exam.title,
+      topics: e.bundle.exam.topics,
+      complexity: e.bundle.exam.complexity,
+      total_questions: e.bundle.exam.total_questions,
+      duration_minutes: e.bundle.exam.duration_minutes,
+      scheduled_for: e.bundle.exam.scheduled_for,
+      created_at: e.bundle.exam.created_at,
+    });
+    setReviewQIdx(0);
+    setResultsPrefaceNotice(
+      "You have already submitted this exam. Your score and answers are shown below. If you need a retake, contact your administrator.",
+    );
+    setStep("results");
+    setError(null);
+  }, []);
+
   const loadExam = useCallback(async (examId: number, emailVal: string) => {
     setLoading(true); setError(null);
     try {
       const data = await getExamQuestions(examId, emailVal.trim().toLowerCase());
+      setResultsPrefaceNotice(null);
       setBundle(data);
       setSelectedExam({ id: data.exam.id, title: data.exam.title, topics: data.exam.topics, complexity: data.exam.complexity, total_questions: data.exam.total_questions, duration_minutes: data.exam.duration_minutes, scheduled_for: data.exam.scheduled_for, created_at: data.exam.created_at });
       
@@ -567,10 +603,14 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         setStep("guidelines");
       }
     } catch (e) {
+      if (e instanceof AlreadySubmittedError) {
+        applyAlreadySubmitted(e);
+        return;
+      }
       setError(e instanceof Error ? e.message : "Could not load questions");
       setSelectedExam(null); setBundle(null);
     } finally { setLoading(false); }
-  }, [startTimer]);
+  }, [applyAlreadySubmitted]);
 
   const startExam = useCallback(() => {
     setChoices({});
@@ -605,7 +645,16 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           return;
         }
 
-        const data = await getExamQuestions(snap.examId, emailNorm);
+        let data: ExamQuestionsResponse;
+        try {
+          data = await getExamQuestions(snap.examId, emailNorm);
+        } catch (err) {
+          if (err instanceof AlreadySubmittedError) {
+            if (!cancelled) applyAlreadySubmitted(err);
+            return;
+          }
+          throw err;
+        }
         if (cancelled) return;
 
         const choicesParsed = parseChoices(snap.choices);
@@ -680,7 +729,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore only on first mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; applyAlreadySubmitted/startTimer/stopTimer are stable
   }, []);
 
   // ─── Persist exam session while taking (survives refresh in this tab) ────
@@ -796,6 +845,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       }));
       const res = await submitExam(currentBundle.exam.id, email.trim().toLowerCase(), answers);
       clearExamSession();
+      setResultsPrefaceNotice(null);
       setResult(res); setReviewQIdx(0); setStep("results");
     } catch (err) {
       leaveSubmitSentRef.current = false;
@@ -1155,8 +1205,10 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           reviewQIdx={reviewQIdx}
           setReviewQIdx={setReviewQIdx}
           inviteMode={inviteMode}
+          prefaceNotice={resultsPrefaceNotice}
           onAnotherExam={() => {
             stopTimer();
+            setResultsPrefaceNotice(null);
             setStep("exams");
             setBundle(null);
             setResult(null);
@@ -1165,6 +1217,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           }}
           onInviteDone={() => {
             stopTimer();
+            setResultsPrefaceNotice(null);
             setStep("register");
             setSelectedExam(null);
             setBundle(null);

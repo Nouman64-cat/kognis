@@ -46,6 +46,19 @@ export async function registerCandidate(
   return res.json() as Promise<CandidatePublic>;
 }
 
+/** Thrown when GET /questions returns 409 — candidate already has an attempt; includes result + bundle for review UI. */
+export class AlreadySubmittedError extends Error {
+  readonly result: SubmitExamResponse;
+  readonly bundle: ExamQuestionsResponse;
+
+  constructor(result: SubmitExamResponse, bundle: ExamQuestionsResponse) {
+    super("already_submitted");
+    this.name = "AlreadySubmittedError";
+    this.result = result;
+    this.bundle = bundle;
+  }
+}
+
 export async function getExamQuestions(
   examId: number,
   email: string,
@@ -55,6 +68,40 @@ export async function getExamQuestions(
     `${base()}/api/v1/exams/${examId}/questions?${q.toString()}`,
     { cache: "no-store" },
   );
+  if (res.status === 409) {
+    let detail: unknown;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      detail = j.detail;
+    } catch {
+      detail = undefined;
+    }
+    if (detail && typeof detail === "object" && detail !== null && "code" in detail) {
+      const d = detail as {
+        code?: string;
+        message?: string;
+        result?: SubmitExamResponse;
+        exam?: ExamQuestionsResponse["exam"];
+        questions?: ExamQuestionsResponse["questions"];
+      };
+      if (
+        d.code === "already_submitted" &&
+        d.result &&
+        d.exam &&
+        Array.isArray(d.questions)
+      ) {
+        throw new AlreadySubmittedError(d.result, { exam: d.exam, questions: d.questions });
+      }
+    }
+    throw new Error(
+      typeof detail === "object" &&
+        detail !== null &&
+        "message" in detail &&
+        typeof (detail as { message: string }).message === "string"
+        ? (detail as { message: string }).message
+        : (await parseError(res)),
+    );
+  }
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<ExamQuestionsResponse>;
 }
