@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
 import {
   getExamQuestions,
   listExams,
   registerCandidate,
   submitExam,
+  submitExamKeepalive,
 } from "@/lib/api";
 import type { ExamQuestionsResponse, ExamSummary, QuestionPublic, SubmitExamResponse } from "@/lib/types";
 
@@ -262,6 +263,37 @@ function ResultsReview({
 }
 
 const STORAGE_KEY = "kognis_candidate_email";
+const EXAM_SESSION_KEY = "kognis_exam_session_v1";
+/** Set before keyboard reload so pagehide does not treat refresh like tab-close. */
+const SKIP_UNLOAD_SUBMIT_KEY = "kognis_skip_unload_submit";
+
+type ExamSessionSnapshotV1 = {
+  v: 1;
+  examId: number;
+  email: string;
+  fullName: string;
+  choices: Record<number, number>;
+  currentQIdx: number;
+  /** Epoch ms when the timed exam reaches zero (used to restore remaining time after refresh). */
+  timerDeadline: number | null;
+};
+
+function clearExamSession() {
+  try {
+    sessionStorage.removeItem(EXAM_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function parseChoices(raw: unknown): Record<number, number> {
+  const out: Record<number, number> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) out[Number(k)] = v;
+  }
+  return out;
+}
 
 type Step = "register" | "exams" | "waiting" | "guidelines" | "take" | "results";
 
@@ -429,6 +461,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [sessionRestoring, setSessionRestoring] = useState(false);
 
   // Current question index for one-at-a-time navigation
   const [currentQIdx, setCurrentQIdx] = useState(0);
@@ -438,6 +471,20 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoSubmitRef = useRef<(() => void) | null>(null);
+  /** Latest exam state for unload handlers (refs avoid stale closures on pagehide). */
+  const takeExamRef = useRef<{
+    step: Step;
+    bundle: ExamQuestionsResponse | null;
+    choices: Record<number, number>;
+    email: string;
+  }>({
+    step: "register",
+    bundle: null,
+    choices: {},
+    email: "",
+  });
+  /** Prevents double submit between visibility timer and pagehide beacon. */
+  const leaveSubmitSentRef = useRef(false);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -459,6 +506,19 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   }, [stopTimer]);
 
   useEffect(() => () => stopTimer(), [stopTimer]);
+
+  useEffect(() => {
+    takeExamRef.current = {
+      step,
+      bundle,
+      choices,
+      email: email.trim().toLowerCase(),
+    };
+  }, [step, bundle, choices, email]);
+
+  useEffect(() => {
+    leaveSubmitSentRef.current = false;
+  }, [bundle?.exam.id]);
 
   // Timer urgency colours
   const timerRatio = (timeLeft !== null && bundle?.exam.duration_minutes)
@@ -515,23 +575,215 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     if (bundle?.exam.duration_minutes) startTimer(bundle.exam.duration_minutes * 60);
   }, [bundle, startTimer]);
 
-  // ─── Anti-cheat Tab Monitoring ──────────────────────────────────────────
+  // ─── Restore in-progress exam after refresh (same tab / sessionStorage) ──
+  useLayoutEffect(() => {
+    let cancelled = false;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(EXAM_SESSION_KEY);
+    } catch {
+      raw = null;
+    }
+    if (!raw) return;
+
+    setSessionRestoring(true);
+
+    void (async () => {
+      try {
+        const snap = JSON.parse(raw) as ExamSessionSnapshotV1;
+        if (snap.v !== 1 || typeof snap.examId !== "number") {
+          clearExamSession();
+          return;
+        }
+        const emailNorm = (snap.email || "").trim().toLowerCase();
+        if (!emailNorm) {
+          clearExamSession();
+          return;
+        }
+
+        const data = await getExamQuestions(snap.examId, emailNorm);
+        if (cancelled) return;
+
+        const choicesParsed = parseChoices(snap.choices);
+        const maxIdx = Math.max(0, data.questions.length - 1);
+        const qIdx = Math.min(Math.max(0, snap.currentQIdx ?? 0), maxIdx);
+
+        setEmail(emailNorm);
+        try {
+          localStorage.setItem(STORAGE_KEY, emailNorm);
+        } catch {
+          /* ignore */
+        }
+        setFullName(typeof snap.fullName === "string" ? snap.fullName : "");
+        setBundle(data);
+        setSelectedExam({
+          id: data.exam.id,
+          title: data.exam.title,
+          topics: data.exam.topics,
+          complexity: data.exam.complexity,
+          total_questions: data.exam.total_questions,
+          duration_minutes: data.exam.duration_minutes,
+          scheduled_for: data.exam.scheduled_for,
+          created_at: data.exam.created_at,
+        });
+        setChoices(choicesParsed);
+        setCurrentQIdx(qIdx);
+
+        const durationSec = data.exam.duration_minutes ? data.exam.duration_minutes * 60 : null;
+
+        if (durationSec != null && durationSec > 0 && snap.timerDeadline != null) {
+          const rem = Math.floor((snap.timerDeadline - Date.now()) / 1000);
+          if (rem <= 0) {
+            stopTimer();
+            setLoading(true);
+            setError(null);
+            try {
+              const answers = data.questions.map((q) => ({
+                question_id: q.id,
+                chosen_option_index: choicesParsed[q.id] ?? -1,
+              }));
+              const res = await submitExam(data.exam.id, emailNorm, answers);
+              if (cancelled) return;
+              clearExamSession();
+              setResult(res);
+              setReviewQIdx(0);
+              setStep("results");
+            } catch (err) {
+              clearExamSession();
+              setError(err instanceof Error ? err.message : "Submit failed");
+              setBundle(null);
+              setSelectedExam(null);
+              setStep("register");
+            } finally {
+              setLoading(false);
+            }
+            return;
+          }
+          startTimer(rem);
+        } else {
+          stopTimer();
+          setTimeLeft(null);
+        }
+
+        setStep("take");
+      } catch {
+        clearExamSession();
+      } finally {
+        if (!cancelled) setSessionRestoring(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore only on first mount
+  }, []);
+
+  // ─── Persist exam session while taking (survives refresh in this tab) ────
+  useEffect(() => {
+    if (sessionRestoring) return;
+    if (step !== "take" || !bundle) {
+      if (step !== "take") clearExamSession();
+      return;
+    }
+    const deadline =
+      timeLeft !== null && bundle.exam.duration_minutes
+        ? Date.now() + timeLeft * 1000
+        : null;
+    const snap: ExamSessionSnapshotV1 = {
+      v: 1,
+      examId: bundle.exam.id,
+      email: email.trim().toLowerCase(),
+      fullName,
+      choices,
+      currentQIdx,
+      timerDeadline: deadline,
+    };
+    try {
+      sessionStorage.setItem(EXAM_SESSION_KEY, JSON.stringify(snap));
+    } catch {
+      /* quota / private mode */
+    }
+  }, [sessionRestoring, step, bundle, choices, currentQIdx, timeLeft, email, fullName]);
+
+  // ─── Anti-cheat: switch away from tab (delayed so F5 refresh can cancel timer) ─
   useEffect(() => {
     if (step !== "take") return;
 
+    let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        setError("Exam automatically submitted: You changed tabs or left the exam window.");
-        autoSubmitRef.current?.();
+        leaveTimer = setTimeout(() => {
+          if (document.hidden && !leaveSubmitSentRef.current) {
+            setError("Exam automatically submitted: You changed tabs or left the exam window.");
+            leaveSubmitSentRef.current = true;
+            autoSubmitRef.current?.();
+          }
+        }, 450);
+      } else if (leaveTimer) {
+        clearTimeout(leaveTimer);
+        leaveTimer = null;
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (leaveTimer) clearTimeout(leaveTimer);
+    };
+  }, [step]);
+
+  // ─── Tab/window close: submit with keepalive (DB only records attempts on submit) ─
+  useEffect(() => {
+    if (step !== "take") return;
+
+    const markRefresh = (e: KeyboardEvent) => {
+      const isRefresh =
+        e.key === "F5" ||
+        ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R"));
+      if (isRefresh) {
+        try {
+          sessionStorage.setItem(SKIP_UNLOAD_SUBMIT_KEY, "1");
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return;
+      const snap = takeExamRef.current;
+      if (snap.step !== "take" || !snap.bundle) return;
+      try {
+        if (sessionStorage.getItem(SKIP_UNLOAD_SUBMIT_KEY)) {
+          sessionStorage.removeItem(SKIP_UNLOAD_SUBMIT_KEY);
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+      if (leaveSubmitSentRef.current) return;
+      leaveSubmitSentRef.current = true;
+      const answers = snap.bundle.questions.map((q) => ({
+        question_id: q.id,
+        chosen_option_index: snap.choices[q.id] ?? -1,
+      }));
+      submitExamKeepalive(snap.bundle.exam.id, snap.email, answers);
+      clearExamSession();
+    };
+
+    window.addEventListener("keydown", markRefresh, true);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("keydown", markRefresh, true);
+      window.removeEventListener("pagehide", onPageHide);
+    };
   }, [step]);
 
   // ─── Submit ───────────────────────────────────────────────────────────────
   const doSubmit = useCallback(async (currentChoices: Record<number, number>, currentBundle: ExamQuestionsResponse) => {
+    leaveSubmitSentRef.current = true;
     stopTimer(); setLoading(true); setError(null);
     try {
       const answers = currentBundle.questions.map((q) => ({
@@ -539,8 +791,10 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         chosen_option_index: currentChoices[q.id] ?? -1,
       }));
       const res = await submitExam(currentBundle.exam.id, email.trim().toLowerCase(), answers);
+      clearExamSession();
       setResult(res); setReviewQIdx(0); setStep("results");
     } catch (err) {
+      leaveSubmitSentRef.current = false;
       setError(err instanceof Error ? err.message : "Submit failed");
     } finally { setLoading(false); }
   }, [email, stopTimer]);
@@ -603,6 +857,14 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const answeredCount = Object.keys(choices).length;
   const progressPct = totalQ > 0 ? Math.round((answeredCount / totalQ) * 100) : 0;
   const currentQ = bundle?.questions[currentQIdx];
+
+  if (sessionRestoring) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
+        <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Restoring your exam…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
@@ -1008,7 +1270,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   <div className="flex items-start gap-3">
                     <span className="mt-0.5 text-red-500">•</span>
                     <p className="text-zinc-700 dark:text-zinc-300">
-                      <strong>Anti-Cheat Active:</strong> Leaving the exam window, changing tabs, or refreshing the page will <strong>automatically submit the exam</strong> immediately.
+                      <strong>Anti-Cheat Active:</strong> Switching to another tab submits the exam after a short delay. <strong>Closing the tab</strong> submits immediately so your attempt is saved. Use the keyboard (<kbd className="rounded border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">F5</kbd> or <kbd className="rounded border border-zinc-300 bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">Ctrl/Cmd+R</kbd>) to refresh in the same tab without closing—your progress is restored from this tab’s session.
                     </p>
                   </div>
                 </div>

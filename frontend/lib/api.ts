@@ -72,6 +72,27 @@ export async function submitExam(
   return res.json() as Promise<SubmitExamResponse>;
 }
 
+/**
+ * Fire-and-forget submit while the page is unloading (tab close, navigate away).
+ * Uses keepalive so the request can finish after the document tears down.
+ */
+export function submitExamKeepalive(
+  examId: number,
+  email: string,
+  answers: { question_id: number; chosen_option_index: number }[],
+): void {
+  try {
+    void fetch(`${base()}/api/v1/exams/${examId}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, answers }),
+      keepalive: true,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function adminAuthStatus(): Promise<{ has_password: boolean }> {
   const res = await fetch(`${base()}/api/v1/admin/auth/status`, { cache: "no-store" });
   if (!res.ok) throw new Error(await parseError(res));
