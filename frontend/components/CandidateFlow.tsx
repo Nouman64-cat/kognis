@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
+import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import {
   getExamQuestions,
   listExams,
@@ -49,7 +50,7 @@ function ResultsReview({
     <div className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
       <header className="z-20 shrink-0 border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
             <div
               className={`rounded-xl px-4 py-3 text-white shadow-sm ${passed ? "bg-emerald-600" : "bg-red-600"}`}
             >
@@ -58,6 +59,9 @@ function ResultsReview({
               <p className="text-xs text-white/80">
                 {result.correct_count} / {result.total_questions} correct
               </p>
+            </div>
+            <div className="shrink-0 scale-[0.92] origin-top-right sm:scale-100">
+              <ThemeSwitcher variant="compact" />
             </div>
           </div>
 
@@ -867,7 +871,16 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
+    <div className="relative min-h-screen bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
+      {/* Theme toggle: fixed only on pre-exam steps (in-exam uses header row to avoid overlapping timer) */}
+      {(step === "register" ||
+        step === "exams" ||
+        step === "guidelines" ||
+        step === "waiting") && (
+        <div className="fixed right-3 top-3 z-50 sm:right-4 sm:top-4">
+          <ThemeSwitcher variant="compact" />
+        </div>
+      )}
 
       {/* ── EXAM MODE: full-screen layout ── */}
       {step === "take" && bundle && currentQ ? (
@@ -889,7 +902,10 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+                <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+                  <div className="shrink-0 scale-[0.92] origin-right sm:scale-100">
+                    <ThemeSwitcher variant="compact" />
+                  </div>
                   {/* Answered counter */}
                   <div className="hidden items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-900 sm:flex">
                     <span className="text-emerald-600 dark:text-emerald-400">{answeredCount}</span>
@@ -901,7 +917,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                     type="button"
                     onClick={() => void requestSubmitExam()}
                     disabled={loading}
-                    className="shrink-0 rounded-xl border border-zinc-300 bg-white px-3 py-1.5 text-xs font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                    className="shrink-0 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                   >
                     Submit exam
                   </button>

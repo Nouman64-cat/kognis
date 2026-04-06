@@ -40,6 +40,7 @@ import type {
   PaginatedQuestionsResponse,
 } from "@/lib/types";
 import { MarkdownBlock } from "@/components/MarkdownBlock";
+import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 
 function formatDate(isoStr: string) {
   const d = new Date(isoStr);
@@ -75,11 +76,15 @@ function SidebarSectionButton({
       onClick={() => onGoTo(sectionId)}
       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
         isActive
-          ? "bg-zinc-800 text-white font-semibold"
-          : "text-zinc-300 hover:bg-zinc-800/80 hover:text-white"
+          ? "bg-zinc-200 font-semibold text-zinc-900 dark:bg-zinc-800 dark:text-white"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/80 dark:hover:text-white"
       }`}
     >
-      <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-emerald-400 opacity-100" : "opacity-80"}`} />
+      <Icon
+        className={`h-4 w-4 shrink-0 ${
+          isActive ? "text-emerald-600 opacity-100 dark:text-emerald-400" : "opacity-80"
+        }`}
+      />
       {label}
     </button>
   );
@@ -311,14 +316,14 @@ export default function AdminPage() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform duration-200 ease-out lg:sticky lg:top-0 lg:h-screen lg:z-0 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-200 bg-white transition-transform duration-200 ease-out dark:border-zinc-800 dark:bg-zinc-900 lg:sticky lg:top-0 lg:h-screen lg:z-0 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex h-14 items-center justify-between gap-2 border-b border-zinc-800 px-4">
+        <div className="flex h-14 items-center justify-between gap-2 border-b border-zinc-200 px-4 dark:border-zinc-800">
           <Link
             href="/admin"
-            className="flex min-w-0 items-center gap-2 text-white"
+            className="flex min-w-0 items-center gap-2 text-zinc-900 dark:text-white"
             onClick={closeSidebar}
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
@@ -331,7 +336,7 @@ export default function AdminPage() {
           </Link>
           <button
             type="button"
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white lg:hidden"
+            className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white lg:hidden"
             onClick={closeSidebar}
             aria-label="Close sidebar"
           >
@@ -349,7 +354,9 @@ export default function AdminPage() {
           <SidebarSectionButton sectionId="questions" icon={BookOpen} label="Questions library" onGoTo={goToSection} isActive={activeTab === "questions"} />
           <SidebarSectionButton sectionId="candidates" icon={Users} label="Candidates" onGoTo={goToSection} isActive={activeTab === "candidates"} />
 
-          <div className="my-3 border-t border-zinc-800" />
+          <ThemeSwitcher />
+
+          <div className="my-3 border-t border-zinc-200 dark:border-zinc-800" />
 
           <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
             Navigate
@@ -357,14 +364,14 @@ export default function AdminPage() {
           <Link
             href="/admin/set-password"
             onClick={closeSidebar}
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white"
+            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white"
           >
             <KeyRound className="h-4 w-4 shrink-0 opacity-80" />
             Password (OTP)
           </Link>
         </nav>
 
-        <div className="border-t border-zinc-800 p-3">
+        <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
           <button
             type="button"
             onClick={() => {
@@ -372,7 +379,7 @@ export default function AdminPage() {
               clearAdminToken();
               router.replace("/admin/login");
             }}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-amber-300/90 hover:bg-zinc-800 hover:text-amber-200"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-300/90 dark:hover:bg-zinc-800 dark:hover:text-amber-200"
           >
             <LogOut className="h-4 w-4" />
             Log out

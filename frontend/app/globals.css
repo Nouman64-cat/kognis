@@ -1,9 +1,17 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Class-based dark mode (toggle via <html class="dark">) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+}
+
+html.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -11,13 +19,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -28,22 +29,31 @@ body {
 
 /* Question markdown: code blocks */
 .question-body pre {
-  background: #18181b;
+  background: #f4f4f5;
   border-radius: 0.75rem;
   padding: 1rem 1.25rem;
   overflow-x: auto;
   margin: 0.75rem 0 0;
   font-size: 0.875rem;
   line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.dark .question-body pre {
+  background: #18181b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .question-body pre code {
   background: transparent !important;
   padding: 0 !important;
   border-radius: 0 !important;
-  color: #e4e4e7;
+  color: #18181b;
   font-family: var(--font-mono), 'Fira Code', 'Consolas', monospace;
+}
+
+.dark .question-body pre code {
+  color: #e4e4e7;
 }
 
 .question-body code:not(pre code) {
@@ -55,9 +65,7 @@ body {
   font-family: var(--font-mono), 'Consolas', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  .question-body code:not(pre code) {
-    background: #27272a;
-    color: #e4e4e7;
-  }
+.dark .question-body code:not(pre code) {
+  background: #27272a;
+  color: #e4e4e7;
 }

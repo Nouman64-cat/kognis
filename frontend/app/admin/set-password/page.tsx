@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { adminSetPassword } from "@/lib/api";
 
 export default function AdminSetPasswordPage() {
@@ -36,7 +37,10 @@ export default function AdminSetPasswordPage() {
   };
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-zinc-50 to-zinc-100 px-4 py-16 dark:from-zinc-950 dark:to-black">
+    <div className="relative min-h-full bg-gradient-to-b from-zinc-50 to-zinc-100 px-4 py-16 dark:from-zinc-950 dark:to-black">
+      <div className="absolute right-4 top-4 z-10">
+        <ThemeSwitcher variant="compact" />
+      </div>
       <div className="mx-auto w-full max-w-sm">
         <Link href="/admin/login" className="text-sm text-amber-700 hover:underline dark:text-amber-400">
           ← Back to login

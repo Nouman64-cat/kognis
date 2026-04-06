@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Shield } from "lucide-react";
+import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import { adminAuthStatus, adminLogin } from "@/lib/api";
 import { getAdminToken, setAdminToken } from "@/lib/admin-token";
 
@@ -41,6 +42,9 @@ export default function AdminLoginPage() {
 
   return (
     <div className="relative min-h-[100dvh] overflow-hidden bg-gradient-to-br from-zinc-100 via-amber-50/40 to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
+      <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
+        <ThemeSwitcher variant="compact" />
+      </div>
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.35] dark:opacity-20"
         style={{
