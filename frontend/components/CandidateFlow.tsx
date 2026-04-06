@@ -42,10 +42,12 @@ function ResultsReview({
   const passed = pct >= 75;
   const gradeLabel = pct >= 90 ? "Excellent" : pct >= 75 ? "Passed" : "Below pass";
 
+  const reviewProgressPct = total > 0 ? ((safeIdx + 1) / total) * 100 : 0;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-gradient-to-br from-zinc-50 via-white to-zinc-100 dark:from-zinc-950 dark:via-zinc-900 dark:to-black">
       <header className="z-20 shrink-0 border-b border-zinc-200 bg-white/90 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/90">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 sm:px-6">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div
               className={`rounded-xl px-4 py-3 text-white shadow-sm ${passed ? "bg-emerald-600" : "bg-red-600"}`}
@@ -57,36 +59,49 @@ function ResultsReview({
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {result.results.map((res, i) => {
-              const isCurrent = i === safeIdx;
-              const ok = res.is_correct;
-              return (
-                <button
-                  key={res.question_id}
-                  type="button"
-                  onClick={() => setReviewQIdx(i)}
-                  title={`Question ${i + 1}`}
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold transition-all ${
-                    isCurrent
-                      ? "scale-110 bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
-                      : ok
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
-                        : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200"
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
+
+          <div className="flex items-center gap-3">
+            <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-emerald-500 transition-all duration-500"
+                style={{ width: `${reviewProgressPct}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Q {safeIdx + 1} / {total}
+            </span>
           </div>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Review <span className="font-semibold text-zinc-700 dark:text-zinc-300">{safeIdx + 1}</span> / {total}
-          </p>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto">
+      <nav
+        className="md:hidden shrink-0 overflow-x-auto border-b border-zinc-200 bg-zinc-50/80 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900/50"
+        aria-label="Question navigation"
+      >
+        <ReviewQuestionNav
+          results={result.results}
+          currentQIdx={safeIdx}
+          onSelect={setReviewQIdx}
+          variant="strip"
+        />
+      </nav>
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="hidden min-h-0 w-[11.5rem] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/90 dark:border-zinc-800 dark:bg-zinc-900/40 md:flex lg:w-52">
+          <div className="shrink-0 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Questions</p>
+          </div>
+          <nav className="min-h-0 flex-1 overflow-y-auto px-1 py-2" aria-label="Question navigation">
+            <ReviewQuestionNav
+              results={result.results}
+              currentQIdx={safeIdx}
+              onSelect={setReviewQIdx}
+              variant="sidebar"
+            />
+          </nav>
+        </aside>
+
+        <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
           <div
             className={`rounded-2xl border bg-white shadow-sm dark:bg-zinc-900 ${
@@ -240,7 +255,8 @@ function ResultsReview({
             )}
           </div>
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
@@ -338,6 +354,56 @@ function ExamQuestionNav({
               ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300"
               : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
           }`}
+      >
+        {i + 1}
+      </button>
+    );
+  });
+
+  if (variant === "strip") {
+    return <div className="flex w-max gap-1.5">{buttons}</div>;
+  }
+
+  return <div className="grid grid-cols-5 gap-1.5">{buttons}</div>;
+}
+
+function ReviewQuestionNav({
+  results,
+  currentQIdx,
+  onSelect,
+  variant,
+}: {
+  results: SubmitExamResponse["results"];
+  currentQIdx: number;
+  onSelect: (index: number) => void;
+  variant: "sidebar" | "strip";
+}) {
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (variant !== "sidebar") return;
+    btnRefs.current[currentQIdx]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentQIdx, variant]);
+
+  const sizeClass = variant === "sidebar" ? "h-8 w-8" : "h-7 w-7 shrink-0";
+
+  const buttons = results.map((res, i) => {
+    const isCurrent = i === currentQIdx;
+    const ok = res.is_correct;
+    return (
+      <button
+        key={res.question_id}
+        type="button"
+        ref={variant === "sidebar" ? (el) => { btnRefs.current[i] = el; } : undefined}
+        onClick={() => onSelect(i)}
+        title={`Question ${i + 1}${ok ? " (correct)" : " (incorrect)"}`}
+        className={`flex ${sizeClass} items-center justify-center rounded-lg text-xs font-bold transition-all ${
+          isCurrent
+            ? "scale-110 bg-emerald-600 text-white shadow-md shadow-emerald-500/30"
+            : ok
+              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+              : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200"
+        }`}
       >
         {i + 1}
       </button>
