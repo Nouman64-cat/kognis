@@ -428,6 +428,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [result, setResult] = useState<SubmitExamResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
 
   // Current question index for one-at-a-time navigation
   const [currentQIdx, setCurrentQIdx] = useState(0);
@@ -565,16 +566,34 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     setLoading(false);
   };
 
-  const onSubmitExam = async (force: boolean = false) => {
+  const requestSubmitExam = useCallback(() => {
     if (!bundle) return;
     const unanswered = bundle.questions.filter((q) => choices[q.id] === undefined);
-    if (!force && unanswered.length > 0) {
-      setError(`${unanswered.length} question${unanswered.length > 1 ? "s" : ""} unanswered. Use the question list to jump to each one.`);
-      return;
+    if (unanswered.length > 0) {
+      setSubmitModalOpen(true);
+    } else {
+      void doSubmit(choices, bundle);
     }
-    setError(null);
-    await doSubmit(choices, bundle);
-  };
+  }, [bundle, choices, doSubmit]);
+
+  const confirmSubmitExam = useCallback(() => {
+    setSubmitModalOpen(false);
+    if (!bundle) return;
+    void doSubmit(choices, bundle);
+  }, [bundle, choices, doSubmit]);
+
+  useEffect(() => {
+    if (!submitModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSubmitModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [submitModalOpen]);
+
+  useEffect(() => {
+    if (step !== "take") setSubmitModalOpen(false);
+  }, [step]);
 
   const inviteMode = presetExamId != null;
   const examDisplayName = (exam: ExamSummary) => exam.title ?? exam.topics.join(", ");
@@ -608,13 +627,22 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
                   {/* Answered counter */}
                   <div className="hidden items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-900 sm:flex">
                     <span className="text-emerald-600 dark:text-emerald-400">{answeredCount}</span>
                     <span className="text-zinc-400">/</span>
                     <span className="text-zinc-600 dark:text-zinc-300">{totalQ} answered</span>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void requestSubmitExam()}
+                    disabled={loading}
+                    className="shrink-0 rounded-xl border border-zinc-300 bg-white px-3 py-1.5 text-xs font-bold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  >
+                    Submit exam
+                  </button>
 
                   {/* Timer */}
                   {timeLeft !== null && (
@@ -678,17 +706,8 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
             <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
 
               {error && (
-                <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
+                <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
                   <p>{error}</p>
-                  {error.includes("unanswered") && (
-                    <button
-                      type="button"
-                      onClick={() => void onSubmitExam(true)}
-                      className="w-fit text-xs font-bold uppercase tracking-wider text-amber-900 underline decoration-amber-900/30 underline-offset-4 hover:decoration-amber-900"
-                    >
-                      Submit anyway
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -784,7 +803,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void onSubmitExam()}
+                    onClick={() => void requestSubmitExam()}
                     disabled={loading}
                     className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                   >
@@ -796,6 +815,59 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
             </div>
             </main>
           </div>
+
+          {submitModalOpen && bundle && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              role="presentation"
+              onClick={() => !loading && setSubmitModalOpen(false)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="submit-exam-title"
+                className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="submit-exam-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  Submit exam?
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                  {answeredCount === 0 ? (
+                    <>
+                      You have not answered any questions. If you submit now, every question will be marked as unanswered and your score will reflect that.
+                    </>
+                  ) : (
+                    <>
+                      You have{" "}
+                      <span className="font-semibold text-zinc-800 dark:text-zinc-200">
+                        {totalQ - answeredCount} unanswered question{totalQ - answeredCount !== 1 ? "s" : ""}
+                      </span>
+                      . Are you sure you want to submit? You will not be able to change your answers afterward.
+                    </>
+                  )}
+                </p>
+                <div className="mt-6 flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSubmitModalOpen(false)}
+                    disabled={loading}
+                    className="rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                  >
+                    Keep working
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmSubmitExam()}
+                    disabled={loading}
+                    className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {loading ? "Submitting…" : "Submit exam"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
       ) : step === "results" && result ? (
