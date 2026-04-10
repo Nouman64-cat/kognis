@@ -26,11 +26,6 @@ async def submit_exam(
     exam = exam_res.scalar_one_or_none()
     if exam is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found.")
-    if exam.department_id != candidate.department_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This exam is restricted to a different department.",
-        )
 
     att_res = await session.execute(
         select(ExamAttempt).where(

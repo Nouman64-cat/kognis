@@ -121,11 +121,6 @@ async def get_exam_questions(
     dep_res = await session.execute(select(Department).where(Department.id == exam.department_id))
     dep = dep_res.scalar_one_or_none()
     dep_name = dep.name if dep else "Unknown"
-    if exam.department_id != candidate.department_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This exam is restricted to a different department.",
-        )
 
     att_res = await session.execute(
         select(ExamAttempt).where(
