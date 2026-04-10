@@ -1665,6 +1665,7 @@ export default function AdminPage() {
                               <thead>
                                 <tr className="text-zinc-400 border-b border-zinc-100 dark:border-zinc-800 font-bold uppercase tracking-tighter">
                                   <th className="px-5 py-3">Assessment Context</th>
+                                  <th className="px-5 py-3">Department</th>
                                   <th className="px-5 py-3">Timeline</th>
                                   <th className="px-5 py-3 text-right">Result</th>
                                   <th className="px-5 py-3 text-right">Breakdown</th>
@@ -1674,7 +1675,7 @@ export default function AdminPage() {
                               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                                 {retakeBanner && (
                                   <tr>
-                                    <td colSpan={5} className="px-5 pb-2 pt-0">
+                                    <td colSpan={6} className="px-5 pb-2 pt-0">
                                       <div className={`rounded-lg px-3 py-2 text-xs font-medium ${
                                         retakeBanner.type === "success"
                                           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
@@ -1698,6 +1699,11 @@ export default function AdminPage() {
                                              {a.exam_title ?? a.exam_topics.join(", ")}
                                            </p>
                                         </div>
+                                      </td>
+                                      <td className="px-5 py-3">
+                                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-500/20 dark:bg-blue-900/20 dark:text-blue-300 dark:ring-blue-500/30">
+                                          {a.exam_department_name}
+                                        </span>
                                       </td>
                                       <td className="px-5 py-3 text-zinc-500 tabular-nums">
                                         {formatDate(a.created_at).split('•')[0]}
