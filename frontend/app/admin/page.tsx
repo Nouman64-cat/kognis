@@ -42,6 +42,7 @@ import {
   listQuestions,
   deleteAttempt,
   deleteExamAdmin,
+  updateExamDepartmentAdmin,
 } from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
 import type {
@@ -128,6 +129,10 @@ export default function AdminPage() {
   const [listError, setListError] = useState<string | null>(null);
   const [copiedExamId, setCopiedExamId] = useState<number | null>(null);
   const [deletingExamId, setDeletingExamId] = useState<number | null>(null);
+  const [deleteExamConfirmId, setDeleteExamConfirmId] = useState<number | null>(null);
+  const [editExamDepartmentFor, setEditExamDepartmentFor] = useState<ExamSummary | null>(null);
+  const [editExamDepartmentId, setEditExamDepartmentId] = useState<number | "">("");
+  const [editExamDepartmentLoading, setEditExamDepartmentLoading] = useState(false);
   const [examDetailOpen, setExamDetailOpen] = useState(false);
   const [examDetail, setExamDetail] = useState<ExamDetailResponse | null>(null);
   const [examDetailLoading, setExamDetailLoading] = useState(false);
@@ -193,8 +198,6 @@ export default function AdminPage() {
 
   const handleDeleteExam = useCallback(
     async (examId: number) => {
-      const ok = window.confirm("Delete this exam? This also removes related attempts and answers.");
-      if (!ok) return;
       setDeletingExamId(examId);
       setListError(null);
       try {
@@ -208,6 +211,34 @@ export default function AdminPage() {
     },
     [],
   );
+
+  const openEditExamDepartment = useCallback((exam: ExamSummary) => {
+    setEditExamDepartmentFor(exam);
+    setEditExamDepartmentId(exam.department_id);
+  }, []);
+
+  const saveExamDepartment = useCallback(async () => {
+    if (!editExamDepartmentFor || editExamDepartmentId === "") return;
+    setEditExamDepartmentLoading(true);
+    setListError(null);
+    try {
+      await updateExamDepartmentAdmin(editExamDepartmentFor.id, editExamDepartmentId);
+      const dep = adminDepartments.find((d) => d.id === editExamDepartmentId);
+      setExams((prev) =>
+        prev.map((e) =>
+          e.id === editExamDepartmentFor.id
+            ? { ...e, department_id: editExamDepartmentId, department_name: dep?.name ?? e.department_name }
+            : e,
+        ),
+      );
+      setEditExamDepartmentFor(null);
+      setEditExamDepartmentId("");
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Could not update exam department");
+    } finally {
+      setEditExamDepartmentLoading(false);
+    }
+  }, [editExamDepartmentFor, editExamDepartmentId, adminDepartments]);
 
   useEffect(() => {
     void loadExams();
@@ -1165,7 +1196,14 @@ export default function AdminPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => void handleDeleteExam(exam.id)}
+                                    onClick={() => openEditExamDepartment(exam)}
+                                    className="inline-flex items-center gap-1 rounded-md border border-blue-300 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950/30"
+                                  >
+                                    Department
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteExamConfirmId(exam.id)}
                                     disabled={deletingExamId === exam.id}
                                     className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
                                   >
@@ -1320,18 +1358,24 @@ export default function AdminPage() {
             {activeTab === "candidates" && (() => {
               // Grouped candidates from stats
               const candidateList = Object.values(candidateStats).sort((a, b) => b.avg_score - a.avg_score);
-              const candidateDepartmentMap = attempts.reduce<Record<string, string>>((acc, a) => {
-                if (!acc[a.candidate_email]) acc[a.candidate_email] = a.candidate_department_name;
+              const candidateDepartmentMap = attempts.reduce<Record<string, string[]>>((acc, a) => {
+                if (!acc[a.candidate_email]) acc[a.candidate_email] = [];
+                if (a.candidate_department_name && !acc[a.candidate_email].includes(a.candidate_department_name)) {
+                  acc[a.candidate_email].push(a.candidate_department_name);
+                }
+                if (a.exam_department_name && !acc[a.candidate_email].includes(a.exam_department_name)) {
+                  acc[a.candidate_email].push(a.exam_department_name);
+                }
                 return acc;
-              }, {});
+              }, {} as Record<string, string[]>);
               const candidateDepartmentOptions = Array.from(
-                new Set(Object.values(candidateDepartmentMap).filter(Boolean)),
+                new Set(Object.values(candidateDepartmentMap).flat().filter(Boolean)),
               ).sort((a, b) => a.localeCompare(b));
               const filteredCandidates = candidateList.filter((c) => {
                 const q = searchQuery.toLowerCase();
-                const depName = candidateDepartmentMap[c.candidate_email] ?? "Unknown";
+                const depNames = candidateDepartmentMap[c.candidate_email] ?? ["Unknown"];
                 const depMatch =
-                  candidateDepartmentFilter === "all" || depName === candidateDepartmentFilter;
+                  candidateDepartmentFilter === "all" || depNames.includes(candidateDepartmentFilter);
                 return (
                   depMatch &&
                   (
@@ -1465,7 +1509,7 @@ export default function AdminPage() {
                                   </p>
                                 )}
                                 <p className={`truncate text-[9px] font-medium ${isSelected ? "text-white/70" : "text-zinc-400"}`}>
-                                  {candidateDepartmentMap[c.candidate_email] ?? "Unknown"}
+                                  {(candidateDepartmentMap[c.candidate_email] ?? ["Unknown"]).join(", ")}
                                 </p>
                               </div>
                             </div>
@@ -2076,6 +2120,86 @@ export default function AdminPage() {
                   </ol>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteExamConfirmId !== null && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteExamConfirmId(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Delete exam?</h3>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+              This will remove the exam and related attempts/answers.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteExamConfirmId(null)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const id = deleteExamConfirmId;
+                  setDeleteExamConfirmId(null);
+                  if (id !== null) await handleDeleteExam(id);
+                }}
+                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-500"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editExamDepartmentFor && (
+        <div className="fixed inset-0 z-[111] flex items-center justify-center bg-black/50 p-4" onClick={() => setEditExamDepartmentFor(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Change exam department</h3>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              {editExamDepartmentFor.title ?? editExamDepartmentFor.topics.join(", ")}
+            </p>
+            <select
+              value={editExamDepartmentId}
+              onChange={(e) => setEditExamDepartmentId(Number(e.target.value))}
+              className="mt-4 w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:ring-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+            >
+              {adminDepartments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditExamDepartmentFor(null)}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={editExamDepartmentLoading || editExamDepartmentId === ""}
+                onClick={() => void saveExamDepartment()}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {editExamDepartmentLoading ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
         </div>

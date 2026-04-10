@@ -308,3 +308,17 @@ export async function deleteExamAdmin(examId: number): Promise<void> {
 
   if (!res.ok) throw new Error(await parseError(res));
 }
+
+export async function updateExamDepartmentAdmin(examId: number, departmentId: number): Promise<void> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${base()}/api/v1/admin/exams/${examId}/department`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ department_id: departmentId }),
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+}

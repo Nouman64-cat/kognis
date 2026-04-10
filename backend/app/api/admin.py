@@ -10,6 +10,7 @@ from app.schemas import (
     AdminCreateDepartmentRequest,
     AdminGenerateExamRequest,
     AdminGenerateExamResponse,
+    AdminUpdateExamDepartmentRequest,
     ExamDetailResponse,
     ExamQuestionDetail,
     AttemptDetailResponse,
@@ -307,6 +308,35 @@ async def get_exam_detail(
         created_at=exam.created_at,
         questions=questions,
     )
+
+
+@router.patch(
+    "/exams/{exam_id}/department",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def update_exam_department(
+    exam_id: int,
+    body: AdminUpdateExamDepartmentRequest,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> None:
+    exam_result = await session.execute(select(Exam).where(Exam.id == exam_id))
+    exam = exam_result.scalar_one_or_none()
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exam {exam_id} not found.",
+        )
+    dep_result = await session.execute(select(Department).where(Department.id == body.department_id))
+    dep = dep_result.scalar_one_or_none()
+    if dep is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid department.",
+        )
+    exam.department_id = body.department_id
+    session.add(exam)
+    await session.commit()
 
 
 @router.get(

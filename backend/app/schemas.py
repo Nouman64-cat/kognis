@@ -106,6 +106,10 @@ class AdminCreateDepartmentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
 
 
+class AdminUpdateExamDepartmentRequest(BaseModel):
+    department_id: int = Field(gt=0)
+
+
 class ExamSummary(BaseModel):
     id: int
     department_id: int
