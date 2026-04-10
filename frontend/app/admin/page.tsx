@@ -540,7 +540,7 @@ export default function AdminPage() {
         </header>
 
         <main className="scroll-smooth">
-          <div className="mx-auto max-w-5xl space-y-8 p-4 pb-12 sm:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-[1600px] space-y-8 p-4 pb-12 sm:p-6 lg:p-8">
             {/* Page title — desktop */}
             <div className="hidden border-b border-zinc-200 pb-6 dark:border-zinc-800 lg:block">
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">

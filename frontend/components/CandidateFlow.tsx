@@ -111,7 +111,7 @@ function ResultsReview({
         </aside>
 
         <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
           {prefaceNotice ? (
             <div
               className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
@@ -1063,7 +1063,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
             {/* ── Scrollable question area ────────────────────────────────── */}
             <main className="min-w-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+            <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
 
               {error && (
                 <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
@@ -1264,7 +1264,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       ) : (
         /* ── NON‑EXAM STEPS: centred layout ─────────────────────────────── */
         <div className="px-4 py-10">
-          <div className="mx-auto max-w-2xl">
+          <div className="mx-auto max-w-5xl">
 
             {/* Top bar */}
             {step !== "register" && (
@@ -1371,7 +1371,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
             {/* ── Guidelines ── */}
             {step === "guidelines" && selectedExam && (
-              <div className="mx-auto mt-12 max-w-2xl px-6">
+              <div className="mx-auto mt-12 max-w-5xl px-6">
                 <div className="mb-6 flex items-center gap-4">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400">
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
