@@ -5,6 +5,8 @@ export type ExamTopicMix = TopicMixEntry[];
 
 export type ExamSummary = {
   id: number;
+  department_id: number;
+  department_name: string;
   title: string | null;
   topics: string[];
   complexity: string;
@@ -20,6 +22,13 @@ export type CandidatePublic = {
   id: number;
   email: string;
   full_name: string;
+  department_id: number;
+  department_name: string;
+};
+
+export type Department = {
+  id: number;
+  name: string;
 };
 
 export type QuestionPublic = {
@@ -35,6 +44,8 @@ export type ExamQuestionsResponse = {
 
 export type AdminGenerateResponse = {
   exam_id: number;
+  department_id: number;
+  department_name: string;
   title: string | null;
   topics: string[];
   complexity: string;
@@ -71,6 +82,10 @@ export type AttemptRow = {
   candidate_name: string;
   candidate_email: string;
   exam_id: number;
+  exam_department_id: number;
+  exam_department_name: string;
+  candidate_department_id: number;
+  candidate_department_name: string;
   exam_topic: string;
   exam_topics: string[];
   exam_title: string | null;
@@ -149,6 +164,8 @@ export type ExamQuestionDetail = {
 
 export type ExamDetailResponse = {
   exam_id: number;
+  department_id: number;
+  department_name: string;
   exam_title: string | null;
   exam_topics: string[];
   exam_complexity: string;

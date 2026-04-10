@@ -5,8 +5,9 @@ from sqlmodel import select
 
 from app.config import get_settings
 from app.deps import db_session, verify_admin
-from app.models import CandidateAnswer, Exam, ExamAttempt, Question
+from app.models import CandidateAnswer, Department, Exam, ExamAttempt, Question
 from app.schemas import (
+    AdminCreateDepartmentRequest,
     AdminGenerateExamRequest,
     AdminGenerateExamResponse,
     ExamDetailResponse,
@@ -15,6 +16,7 @@ from app.schemas import (
     AttemptQuestionDetail,
     AttemptRow,
     CandidateAnalytics,
+    DepartmentPublic,
     GlobalAnalytics,
     ListAttemptsResponse,
     PaginatedQuestionsResponse,
@@ -52,7 +54,13 @@ async def generate_exam(
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e)) from e
 
+    dep_res = await session.execute(select(Department).where(Department.id == body.department_id))
+    department = dep_res.scalar_one_or_none()
+    if department is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid department.")
+
     exam = Exam(
+        department_id=body.department_id,
         topic=primary_topic,
         topics=clean_topics,
         title=body.title.strip() if body.title else None,
@@ -83,6 +91,8 @@ async def generate_exam(
 
     return AdminGenerateExamResponse(
         exam_id=exam.id,
+        department_id=exam.department_id,
+        department_name=department.name,
         title=exam.title,
         topics=exam.topics or [exam.topic],
         complexity=exam.complexity,
@@ -92,6 +102,50 @@ async def generate_exam(
         created_at=exam.created_at,
         topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
     )
+
+
+@router.get(
+    "/departments",
+    response_model=list[DepartmentPublic],
+)
+async def list_departments_admin(
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> list[DepartmentPublic]:
+    result = await session.execute(select(Department).order_by(Department.name.asc()))
+    rows = result.scalars().all()
+    out: list[DepartmentPublic] = []
+    for d in rows:
+        if d.id is None:
+            continue
+        out.append(DepartmentPublic(id=d.id, name=d.name))
+    return out
+
+
+@router.post(
+    "/departments",
+    response_model=DepartmentPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_department_admin(
+    body: AdminCreateDepartmentRequest,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> DepartmentPublic:
+    clean_name = body.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department name is required.")
+
+    existing = await session.execute(select(Department).where(func.lower(Department.name) == clean_name.lower()))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Department already exists.")
+
+    dep = Department(name=clean_name)
+    session.add(dep)
+    await session.commit()
+    await session.refresh(dep)
+    assert dep.id is not None
+    return DepartmentPublic(id=dep.id, name=dep.name)
 
 
 @router.get(
@@ -115,10 +169,23 @@ async def list_attempts(
     rows = result.scalars().all()
 
     attempts: list[AttemptRow] = []
+    dep_name_by_id: dict[int, str] = {}
+
+    async def resolve_dep_name(dep_id: int) -> str:
+        if dep_id in dep_name_by_id:
+            return dep_name_by_id[dep_id]
+        dep_row = await session.execute(select(Department).where(Department.id == dep_id))
+        dep = dep_row.scalar_one_or_none()
+        name = dep.name if dep else "Unknown"
+        dep_name_by_id[dep_id] = name
+        return name
+
     for a in rows:
         if a.candidate is None or a.exam is None:
             continue
         correct = sum(1 for ans in a.candidate_answers if ans.is_correct)
+        exam_dep_name = await resolve_dep_name(a.exam.department_id)
+        candidate_dep_name = await resolve_dep_name(a.candidate.department_id)
         attempts.append(
             AttemptRow(
                 attempt_id=a.id,
@@ -126,6 +193,10 @@ async def list_attempts(
                 candidate_name=a.candidate.full_name,
                 candidate_email=a.candidate.email,
                 exam_id=a.exam.id,
+                exam_department_id=a.exam.department_id,
+                exam_department_name=exam_dep_name,
+                candidate_department_id=a.candidate.department_id,
+                candidate_department_name=candidate_dep_name,
                 exam_topic=a.exam.topic,
                 exam_topics=a.exam.topics if a.exam.topics else [a.exam.topic],
                 exam_title=a.exam.title,
@@ -221,8 +292,12 @@ async def get_exam_detail(
         )
 
     topics = exam.topics if exam.topics else [exam.topic]
+    dep_res = await session.execute(select(Department).where(Department.id == exam.department_id))
+    dep = dep_res.scalar_one_or_none()
     return ExamDetailResponse(
         exam_id=exam.id,
+        department_id=exam.department_id,
+        department_name=dep.name if dep else "Unknown",
         exam_title=exam.title,
         exam_topics=topics,
         exam_complexity=exam.complexity,

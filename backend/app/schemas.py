@@ -44,6 +44,7 @@ def parse_topic_mix_from_storage(raw: object | None) -> list[TopicMixEntry] | No
 
 
 class AdminGenerateExamRequest(BaseModel):
+    department_id: int = Field(gt=0)
     title: str | None = Field(default=None, max_length=512)
     complexity: str = Field(min_length=1, max_length=64)
     total_questions: int = Field(ge=1, le=100)
@@ -70,6 +71,8 @@ class AdminGenerateExamRequest(BaseModel):
 
 class AdminGenerateExamResponse(BaseModel):
     exam_id: int
+    department_id: int
+    department_name: str
     title: str | None
     topics: list[str]
     complexity: str
@@ -83,16 +86,30 @@ class AdminGenerateExamResponse(BaseModel):
 class CandidateRegisterRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(min_length=1, max_length=255)
+    department_id: int = Field(gt=0)
 
 
 class CandidatePublic(BaseModel):
     id: int
     email: str
     full_name: str
+    department_id: int
+    department_name: str
+
+
+class DepartmentPublic(BaseModel):
+    id: int
+    name: str
+
+
+class AdminCreateDepartmentRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
 
 
 class ExamSummary(BaseModel):
     id: int
+    department_id: int
+    department_name: str
     title: str | None
     topics: list[str]
     complexity: str
@@ -157,6 +174,10 @@ class AttemptRow(BaseModel):
     candidate_name: str
     candidate_email: str
     exam_id: int
+    exam_department_id: int
+    exam_department_name: str
+    candidate_department_id: int
+    candidate_department_name: str
     exam_topic: str
     exam_topics: list[str]
     exam_title: str | None
@@ -235,6 +256,8 @@ class ExamQuestionDetail(BaseModel):
 
 class ExamDetailResponse(BaseModel):
     exam_id: int
+    department_id: int
+    department_name: str
     exam_title: str | None
     exam_topics: list[str]
     exam_complexity: str

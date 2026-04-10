@@ -6,12 +6,13 @@ import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
 import {
   AlreadySubmittedError,
   getExamQuestions,
+  listDepartments,
   listExams,
   registerCandidate,
   submitExam,
   submitExamKeepalive,
 } from "@/lib/api";
-import type { ExamQuestionsResponse, ExamSummary, QuestionPublic, SubmitExamResponse } from "@/lib/types";
+import type { Department, ExamQuestionsResponse, ExamSummary, QuestionPublic, SubmitExamResponse } from "@/lib/types";
 
 function ResultsReview({
   result,
@@ -468,6 +469,9 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [step, setStep] = useState<Step>("register");
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentId, setDepartmentId] = useState<number | "">("");
+  const [inviteDepartmentName, setInviteDepartmentName] = useState<string | null>(null);
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [selectedExam, setSelectedExam] = useState<ExamSummary | null>(null);
   const [bundle, setBundle] = useState<ExamQuestionsResponse | null>(null);
@@ -558,28 +562,60 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     try { const s = localStorage.getItem(STORAGE_KEY); if (s) setEmail(s); } catch { /* */ }
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await listDepartments();
+        if (!active) return;
+        setDepartments(rows);
+        if (rows.length > 0) {
+          setDepartmentId((prev) => (prev === "" ? rows[0].id : prev));
+        }
+      } catch {
+        if (!active) return;
+        setDepartments([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (presetExamId == null) return;
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await listExams();
+        if (!active) return;
+        const exam = rows.find((e) => e.id === presetExamId);
+        if (!exam) return;
+        setDepartmentId(exam.department_id);
+        setInviteDepartmentName(exam.department_name);
+      } catch {
+        if (!active) return;
+        setInviteDepartmentName(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [presetExamId]);
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const goExams = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setExams(await listExams()); setStep("exams"); }
+    try { setExams(await listExams(email)); setStep("exams"); }
     catch (e) { setError(e instanceof Error ? e.message : "Failed to load exams"); }
     finally { setLoading(false); }
-  }, []);
+  }, [email]);
 
   const applyAlreadySubmitted = useCallback((e: AlreadySubmittedError) => {
     clearExamSession();
     setResult(e.result);
     setBundle(e.bundle);
-    setSelectedExam({
-      id: e.bundle.exam.id,
-      title: e.bundle.exam.title,
-      topics: e.bundle.exam.topics,
-      complexity: e.bundle.exam.complexity,
-      total_questions: e.bundle.exam.total_questions,
-      duration_minutes: e.bundle.exam.duration_minutes,
-      scheduled_for: e.bundle.exam.scheduled_for,
-      created_at: e.bundle.exam.created_at,
-    });
+    setSelectedExam(e.bundle.exam);
     setReviewQIdx(0);
     setResultsPrefaceNotice(
       "You have already submitted this exam. Your score and answers are shown below. If you need a retake, contact your administrator.",
@@ -594,7 +630,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       const data = await getExamQuestions(examId, emailVal.trim().toLowerCase());
       setResultsPrefaceNotice(null);
       setBundle(data);
-      setSelectedExam({ id: data.exam.id, title: data.exam.title, topics: data.exam.topics, complexity: data.exam.complexity, total_questions: data.exam.total_questions, duration_minutes: data.exam.duration_minutes, scheduled_for: data.exam.scheduled_for, created_at: data.exam.created_at });
+      setSelectedExam(data.exam);
       
       const isFuture = data.exam.scheduled_for && new Date(data.exam.scheduled_for).getTime() > Date.now();
       if (isFuture) {
@@ -669,16 +705,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         }
         setFullName(typeof snap.fullName === "string" ? snap.fullName : "");
         setBundle(data);
-        setSelectedExam({
-          id: data.exam.id,
-          title: data.exam.title,
-          topics: data.exam.topics,
-          complexity: data.exam.complexity,
-          total_questions: data.exam.total_questions,
-          duration_minutes: data.exam.duration_minutes,
-          scheduled_for: data.exam.scheduled_for,
-          created_at: data.exam.created_at,
-        });
+        setSelectedExam(data.exam);
         setChoices(choicesParsed);
         setCurrentQIdx(qIdx);
 
@@ -861,7 +888,12 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const onRegister = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     const emailNorm = email.trim().toLowerCase();
-    try { await registerCandidate(email, fullName); }
+    if (departmentId === "") {
+      setError("Please select your department.");
+      setLoading(false);
+      return;
+    }
+    try { await registerCandidate(email, fullName, departmentId); }
     catch (err) {
       const msg = err instanceof Error ? err.message : "";
       const already = msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("409");
@@ -1277,6 +1309,35 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   <input id="name" type="text" required autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)}
                     className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50" />
                 </div>
+                {inviteMode ? (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Department</label>
+                    <div className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-zinc-700 shadow-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200">
+                      {inviteDepartmentName ?? "Assigned by exam link"}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label htmlFor="department" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Department</label>
+                    <select
+                      id="department"
+                      required
+                      value={departmentId}
+                      onChange={(e) => setDepartmentId(Number(e.target.value))}
+                      className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                    >
+                      {departments.length === 0 ? (
+                        <option value="">No departments available</option>
+                      ) : (
+                        departments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                )}
                 <button type="submit" disabled={loading}
                   className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50">
                   {loading ? "Working…" : inviteMode ? "Register & start exam" : "Register & continue"}

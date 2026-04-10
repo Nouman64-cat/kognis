@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Column, DateTime, UniqueConstraint, func
 from sqlalchemy.types import JSON
@@ -35,14 +35,27 @@ class Candidate(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     full_name: str = Field(max_length=255, index=True)
     email: str = Field(max_length=320, unique=True, index=True)
+    department_id: int = Field(foreign_key="department.id", index=True)
 
+    department: Optional["Department"] = Relationship(back_populates="candidates")
     exam_attempts: list["ExamAttempt"] = Relationship(back_populates="candidate")
+
+
+class Department(SQLModel, table=True):
+    __tablename__ = "department"
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(max_length=128, unique=True, index=True)
+
+    candidates: list["Candidate"] = Relationship(back_populates="department")
+    exams: list["Exam"] = Relationship(back_populates="department")
 
 
 class Exam(SQLModel, table=True):
     __tablename__ = "exam"
 
     id: int | None = Field(default=None, primary_key=True)
+    department_id: int = Field(foreign_key="department.id", index=True)
     topic: str = Field(max_length=512, index=True)  # legacy single-topic kept for compatibility
     topics: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     title: str | None = Field(default=None, max_length=512)
@@ -61,6 +74,7 @@ class Exam(SQLModel, table=True):
 
     questions: list["Question"] = Relationship(back_populates="exam", cascade_delete=True)
     attempts: list["ExamAttempt"] = Relationship(back_populates="exam", cascade_delete=True)
+    department: Optional["Department"] = Relationship(back_populates="exams")
 
 
 class Question(SQLModel, table=True):

@@ -3,6 +3,7 @@ import type {
   AdminGenerateResponse,
   AttemptDetailResponse,
   CandidatePublic,
+  Department,
   ExamDetailResponse,
   ExamQuestionsResponse,
   ExamSummary,
@@ -28,20 +29,55 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
-export async function listExams(): Promise<ExamSummary[]> {
-  const res = await fetch(`${base()}/api/v1/exams`, { cache: "no-store" });
+export async function listExams(email?: string): Promise<ExamSummary[]> {
+  const q = new URLSearchParams();
+  if (email) q.set("email", email.trim().toLowerCase());
+  const url = q.toString() ? `${base()}/api/v1/exams?${q.toString()}` : `${base()}/api/v1/exams`;
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<ExamSummary[]>;
+}
+
+export async function listDepartments(): Promise<Department[]> {
+  const res = await fetch(`${base()}/api/v1/departments`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<Department[]>;
+}
+
+export async function listAdminDepartments(): Promise<Department[]> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${base()}/api/v1/admin/departments`, {
+    cache: "no-store",
+    headers,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<Department[]>;
+}
+
+export async function createAdminDepartment(name: string): Promise<Department> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${base()}/api/v1/admin/departments`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ name: name.trim() }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<Department>;
 }
 
 export async function registerCandidate(
   email: string,
   fullName: string,
+  departmentId: number,
 ): Promise<CandidatePublic> {
   const res = await fetch(`${base()}/api/v1/candidates/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, full_name: fullName }),
+    body: JSON.stringify({ email, full_name: fullName, department_id: departmentId }),
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<CandidatePublic>;
@@ -168,6 +204,7 @@ export async function adminSetPassword(otp: string, newPassword: string): Promis
 }
 
 export async function generateExamAdmin(body: {
+  department_id: number;
   title?: string;
   complexity: string;
   total_questions: number;

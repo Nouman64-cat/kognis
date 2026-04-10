@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   BookOpen,
+  Building2,
   Calendar,
   Check,
   CheckCircle2,
@@ -31,9 +32,11 @@ import {
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
 import {
+  createAdminDepartment,
   generateExamAdmin,
   getExamDetailAdmin,
   getAttemptDetail,
+  listAdminDepartments,
   listAttempts,
   listExams,
   listQuestions,
@@ -45,6 +48,7 @@ import type {
   AttemptDetailResponse,
   AttemptRow,
   CandidateAnalytics,
+  Department,
   ExamDetailResponse,
   ExamSummary,
   GlobalAnalytics,
@@ -104,13 +108,17 @@ function SidebarSectionButton({
 export default function AdminPage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "create" | "library" | "candidates" | "questions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "create" | "departments" | "library" | "candidates" | "questions">("overview");
   // Create exam form state
   const [examTitle, setExamTitle] = useState("");
   const [complexity, setComplexity] = useState("intermediate");
   const [totalQuestions, setTotalQuestions] = useState(10);
   const [durationMinutes, setDurationMinutes] = useState<number | "">("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [adminDepartments, setAdminDepartments] = useState<Department[]>([]);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | "">("");
+  const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [departmentCreateLoading, setDepartmentCreateLoading] = useState(false);
   const [topicMixRows, setTopicMixRows] = useState<{ id: string; name: string; percent: number }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +146,7 @@ export default function AdminPage() {
   const [attemptsLoading, setAttemptsLoading] = useState(false);
   const [attemptsError, setAttemptsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [candidateDepartmentFilter, setCandidateDepartmentFilter] = useState<string>("all");
   const [selectedCandidateEmail, setSelectedCandidateEmail] = useState<string | null>(null);
   const [retakeConfirmId, setRetakeConfirmId] = useState<number | null>(null);
   const [retakeLoading, setRetakeLoading] = useState(false);
@@ -163,7 +172,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     const hash = window.location.hash.replace(/^#/, "");
-    if (hash && ["overview", "create", "library", "candidates", "questions"].includes(hash)) {
+    if (hash && ["overview", "create", "departments", "library", "candidates", "questions"].includes(hash)) {
       setActiveTab(hash as any);
     }
   }, []);
@@ -203,6 +212,22 @@ export default function AdminPage() {
   useEffect(() => {
     void loadExams();
   }, [loadExams]);
+
+  const loadAdminDepartments = useCallback(async () => {
+    try {
+      const rows = await listAdminDepartments();
+      setAdminDepartments(rows);
+      if (rows.length > 0) {
+        setSelectedDepartmentId((prev) => (prev === "" ? rows[0].id : prev));
+      }
+    } catch {
+      setAdminDepartments([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAdminDepartments();
+  }, [loadAdminDepartments]);
 
   const loadAttempts = useCallback(async () => {
     setAttemptsLoading(true);
@@ -323,6 +348,10 @@ export default function AdminPage() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedDepartmentId === "") {
+      setError("Select a department for this exam.");
+      return;
+    }
     if (!topicMixValid) {
       setError(
         "Add at least one topic bucket with a name, ensure bucket names are unique, and set percentages to total 100%.",
@@ -334,6 +363,7 @@ export default function AdminPage() {
     setSuccess(null);
     try {
       const res = await generateExamAdmin({
+        department_id: selectedDepartmentId,
         title: examTitle.trim() || undefined,
         complexity: complexity.trim(),
         total_questions: totalQuestions,
@@ -354,6 +384,23 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
+  const onCreateDepartment = useCallback(async () => {
+    const name = newDepartmentName.trim();
+    if (!name) return;
+    setDepartmentCreateLoading(true);
+    setError(null);
+    try {
+      const created = await createAdminDepartment(name);
+      setAdminDepartments((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedDepartmentId(created.id);
+      setNewDepartmentName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not create department");
+    } finally {
+      setDepartmentCreateLoading(false);
+    }
+  }, [newDepartmentName]);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "—";
 
@@ -405,6 +452,7 @@ export default function AdminPage() {
           </p>
           <SidebarSectionButton sectionId="overview" icon={Layers} label="Overview" onGoTo={goToSection} isActive={activeTab === "overview"} />
           <SidebarSectionButton sectionId="create" icon={Sparkles} label="Create exam" onGoTo={goToSection} isActive={activeTab === "create"} />
+          <SidebarSectionButton sectionId="departments" icon={Building2} label="Departments" onGoTo={goToSection} isActive={activeTab === "departments"} />
           <SidebarSectionButton sectionId="library" icon={Library} label="Exam library" onGoTo={goToSection} isActive={activeTab === "library"} />
           <SidebarSectionButton sectionId="questions" icon={BookOpen} label="Questions library" onGoTo={goToSection} isActive={activeTab === "questions"} />
           <SidebarSectionButton sectionId="candidates" icon={Users} label="Candidates" onGoTo={goToSection} isActive={activeTab === "candidates"} />
@@ -788,6 +836,37 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
+                    {/* Department */}
+                    <div>
+                      <label
+                        htmlFor="department"
+                        className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200"
+                      >
+                        Department
+                      </label>
+                      <div className="relative group/select">
+                        <select
+                          id="department"
+                          required
+                          value={selectedDepartmentId}
+                          onChange={(e) => setSelectedDepartmentId(Number(e.target.value))}
+                          className="w-full appearance-none rounded-xl border-0 ring-1 ring-zinc-300 bg-zinc-50 px-4 py-3.5 pr-10 text-zinc-900 shadow-sm transition-all hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-50 dark:hover:bg-zinc-900 dark:focus:bg-zinc-900 leading-tight"
+                        >
+                          {adminDepartments.length === 0 ? (
+                            <option value="">No departments available</option>
+                          ) : (
+                            adminDepartments.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3.5 text-zinc-400 transition-colors group-hover/select:text-zinc-600 dark:group-hover/select:text-zinc-300">
+                          <ChevronDown className="h-4 w-4" />
+                        </div>
+                      </div>
+                    </div>
                     {/* Total Questions */}
                     <div>
                       <label htmlFor="n" className="mb-2.5 block text-sm font-bold text-zinc-800 dark:text-zinc-200">
@@ -862,6 +941,81 @@ export default function AdminPage() {
             </section>
             )}
 
+            {/* Departments */}
+            {activeTab === "departments" && (
+            <section
+              id="departments"
+              className="animate-in fade-in slide-in-from-bottom-4 duration-500 rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              aria-labelledby="departments-heading"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-5 py-4 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-zinc-400" />
+                  <div>
+                    <h2 id="departments-heading" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                      Department Management
+                    </h2>
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      Add and review departments used by candidate registration and exam assignment.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadAdminDepartments()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </button>
+              </div>
+
+              <div className="space-y-5 p-5">
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-4 dark:border-zinc-700 dark:bg-zinc-800/40">
+                  <label htmlFor="new-department-page" className="mb-2 block text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    Add Department
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      id="new-department-page"
+                      type="text"
+                      value={newDepartmentName}
+                      onChange={(e) => setNewDepartmentName(e.target.value)}
+                      placeholder="e.g. Product, Finance, Data Engineering"
+                      className="w-full rounded-xl border-0 ring-1 ring-zinc-300 bg-white px-4 py-3 text-sm text-zinc-900 shadow-sm transition-all placeholder:text-zinc-400 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 dark:ring-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void onCreateDepartment()}
+                      disabled={departmentCreateLoading || !newDepartmentName.trim()}
+                      className="shrink-0 rounded-xl bg-amber-500 px-4 py-3 text-xs font-bold text-amber-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {departmentCreateLoading ? "Adding..." : "Add Department"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
+                  <div className="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-700 dark:border-zinc-800 dark:text-zinc-200">
+                    Existing Departments ({adminDepartments.length})
+                  </div>
+                  {adminDepartments.length === 0 ? (
+                    <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">No departments yet.</p>
+                  ) : (
+                    <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                      {adminDepartments.map((d) => (
+                        <li key={d.id} className="flex items-center justify-between px-4 py-3">
+                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{d.name}</span>
+                          <span className="font-mono text-xs text-zinc-500">#{d.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </section>
+            )}
+
             {/* Exam library */}
             {activeTab === "library" && (
             <section
@@ -926,6 +1080,7 @@ export default function AdminPage() {
                       <thead className="border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-700 dark:bg-zinc-800/50">
                         <tr>
                           <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Topic</th>
+                          <th className="hidden px-4 py-3 font-medium text-zinc-700 md:table-cell dark:text-zinc-300">Department</th>
                           <th className="hidden px-4 py-3 font-medium text-zinc-700 sm:table-cell dark:text-zinc-300">
                             Level
                           </th>
@@ -954,6 +1109,9 @@ export default function AdminPage() {
                                 >
                                   {exam.title ?? exam.topics.join(", ")}
                                 </button>
+                              </td>
+                              <td className="hidden px-4 py-3 text-zinc-600 md:table-cell dark:text-zinc-400">
+                                {exam.department_name}
                               </td>
                               <td className="hidden px-4 py-3 capitalize text-zinc-600 sm:table-cell dark:text-zinc-400">
                                 {exam.complexity}
@@ -1162,11 +1320,24 @@ export default function AdminPage() {
             {activeTab === "candidates" && (() => {
               // Grouped candidates from stats
               const candidateList = Object.values(candidateStats).sort((a, b) => b.avg_score - a.avg_score);
+              const candidateDepartmentMap = attempts.reduce<Record<string, string>>((acc, a) => {
+                if (!acc[a.candidate_email]) acc[a.candidate_email] = a.candidate_department_name;
+                return acc;
+              }, {});
+              const candidateDepartmentOptions = Array.from(
+                new Set(Object.values(candidateDepartmentMap).filter(Boolean)),
+              ).sort((a, b) => a.localeCompare(b));
               const filteredCandidates = candidateList.filter((c) => {
                 const q = searchQuery.toLowerCase();
+                const depName = candidateDepartmentMap[c.candidate_email] ?? "Unknown";
+                const depMatch =
+                  candidateDepartmentFilter === "all" || depName === candidateDepartmentFilter;
                 return (
-                  c.candidate_name.toLowerCase().includes(q) ||
-                  c.candidate_email.toLowerCase().includes(q)
+                  depMatch &&
+                  (
+                    c.candidate_name.toLowerCase().includes(q) ||
+                    c.candidate_email.toLowerCase().includes(q)
+                  )
                 );
               });
 
@@ -1234,6 +1405,24 @@ export default function AdminPage() {
                       />
                     </div>
 
+                    <div className="relative group">
+                      <select
+                        value={candidateDepartmentFilter}
+                        onChange={(e) => {
+                          setCandidateDepartmentFilter(e.target.value);
+                          setSelectedCandidateEmail(null);
+                        }}
+                        className="w-full rounded-xl border-0 ring-1 ring-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-violet-500/50 dark:ring-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+                      >
+                        <option value="all">All departments</option>
+                        {candidateDepartmentOptions.map((dep) => (
+                          <option key={dep} value={dep}>
+                            {dep}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="flex flex-col gap-1.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
                       {filteredCandidates.map((c, idx) => {
                         const isSelected = selectedCandidateEmail === c.candidate_email;
@@ -1275,6 +1464,9 @@ export default function AdminPage() {
                                     Active {formatDate(lastActive).split('•')[0]}
                                   </p>
                                 )}
+                                <p className={`truncate text-[9px] font-medium ${isSelected ? "text-white/70" : "text-zinc-400"}`}>
+                                  {candidateDepartmentMap[c.candidate_email] ?? "Unknown"}
+                                </p>
                               </div>
                             </div>
                             <div className="flex shrink-0 flex-col items-end gap-1">
