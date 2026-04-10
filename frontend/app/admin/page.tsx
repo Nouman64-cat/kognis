@@ -321,7 +321,7 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "candidates" && attempts.length === 0 && !attemptsLoading) {
+    if ((activeTab === "candidates" || activeTab === "overview") && attempts.length === 0 && !attemptsLoading) {
       void loadAttempts();
     }
   }, [activeTab, attempts.length, attemptsLoading, loadAttempts]);
@@ -554,6 +554,59 @@ export default function AdminPage() {
             {/* Overview */}
             {activeTab === "overview" && (
             <section id="overview" className="animate-in fade-in slide-in-from-bottom-4 duration-500" aria-labelledby="overview-heading">
+              {(() => {
+                const byExamDepartment = attempts.reduce<Record<string, number>>((acc, a) => {
+                  acc[a.exam_department_name] = (acc[a.exam_department_name] ?? 0) + 1;
+                  return acc;
+                }, {});
+                const byExamDepartmentAvg = attempts.reduce<Record<string, { total: number; count: number }>>((acc, a) => {
+                  const key = a.exam_department_name;
+                  if (!acc[key]) acc[key] = { total: 0, count: 0 };
+                  acc[key].total += a.score_percent;
+                  acc[key].count += 1;
+                  return acc;
+                }, {});
+                const departmentRows = Object.entries(byExamDepartment)
+                  .map(([name, count]) => ({
+                    name,
+                    attempts: count,
+                    avg:
+                      byExamDepartmentAvg[name] && byExamDepartmentAvg[name].count > 0
+                        ? byExamDepartmentAvg[name].total / byExamDepartmentAvg[name].count
+                        : 0,
+                  }))
+                  .sort((a, b) => b.attempts - a.attempts)
+                  .slice(0, 8);
+                const now = Date.now();
+                const upcomingExams = exams.filter(
+                  (e) => e.scheduled_for && new Date(e.scheduled_for).getTime() > now,
+                ).length;
+                const activeDepartments = new Set(exams.map((e) => e.department_name)).size;
+                const atRiskCandidates = Object.values(candidateStats).filter((c) => c.pass_rate < 75).length;
+                const deptPerformance = attempts.reduce<
+                  Record<string, { attempts: number; passed: number; avgTotal: number }>
+                >((acc, a) => {
+                  const key = a.exam_department_name;
+                  if (!acc[key]) acc[key] = { attempts: 0, passed: 0, avgTotal: 0 };
+                  acc[key].attempts += 1;
+                  if (a.score_percent >= 75) acc[key].passed += 1;
+                  acc[key].avgTotal += a.score_percent;
+                  return acc;
+                }, {});
+                const deptRows = Object.entries(deptPerformance)
+                  .map(([name, v]) => ({
+                    name,
+                    attempts: v.attempts,
+                    passRate: v.attempts > 0 ? (v.passed / v.attempts) * 100 : 0,
+                    avg: v.attempts > 0 ? v.avgTotal / v.attempts : 0,
+                  }))
+                  .sort((a, b) => b.attempts - a.attempts)
+                  .slice(0, 6);
+                const recentAttempts = [...attempts]
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .slice(0, 8);
+                return (
+                  <>
               <div className="mb-8 flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-500/20 shadow-sm dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/30">
                   <TrendingUp className="h-6 w-6" />
@@ -563,65 +616,91 @@ export default function AdminPage() {
                     Platform Overview
                   </h2>
                   <p className="mt-1 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-                    Aggregated intelligence on exams generated and question banks. Observe your platform growth and active API status.
+                    Aggregated performance across all attempts with department-level visual analytics.
                   </p>
                 </div>
               </div>
-              <div className="grid gap-6 sm:grid-cols-3">
-                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                  <div className="relative">
-                    <div className="mb-4 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-                        <LayoutDashboard className="h-5 w-5" />
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                {[
+                  { label: "Total Attempts", value: globalStats?.total_attempts ?? 0, icon: Layers, tone: "violet" },
+                  { label: "Unique Candidates", value: globalStats?.unique_candidates ?? 0, icon: Users, tone: "blue" },
+                  { label: "Pass Rate", value: `${(globalStats?.pass_rate ?? 0).toFixed(0)}%`, icon: Trophy, tone: "amber" },
+                  { label: "Avg Score", value: `${(globalStats?.avg_score ?? 0).toFixed(1)}%`, icon: Target, tone: "indigo" },
+                  { label: "Exams Created", value: listLoading ? "—" : exams.length, icon: LayoutDashboard, tone: "emerald" },
+                ].map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <div key={kpi.label} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{kpi.label}</p>
+                        <Icon className="h-4 w-4 text-zinc-400" />
                       </div>
-                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">Total Exams Created</p>
+                      <p className="mt-3 text-4xl font-black tracking-tight text-zinc-900 dark:text-zinc-50">{kpi.value}</p>
                     </div>
-                    <p className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
-                      {listLoading ? "—" : exams.length}
-                    </p>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 grid gap-4 xl:grid-cols-3">
+                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Upcoming Exams</p>
+                  <p className="mt-2 text-3xl font-black text-zinc-900 dark:text-zinc-50">{upcomingExams}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Departments</p>
+                  <p className="mt-2 text-3xl font-black text-zinc-900 dark:text-zinc-50">{activeDepartments}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Candidates Needing Attention</p>
+                  <p className="mt-2 text-3xl font-black text-zinc-900 dark:text-zinc-50">{atRiskCandidates}</p>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Department Performance</h3>
+                  <div className="mt-4 space-y-2">
+                    {deptRows.length === 0 ? (
+                      <p className="text-sm text-zinc-500">No attempt data yet.</p>
+                    ) : (
+                      deptRows.map((d) => (
+                        <div key={d.name} className="flex items-center justify-between rounded-lg border border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">{d.name}</span>
+                          <span className="text-zinc-500">
+                            {d.attempts} attempts · {d.passRate.toFixed(0)}% pass · {d.avg.toFixed(1)}% avg
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
-                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-amber-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                  <div className="relative">
-                    <div className="mb-4 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
-                        <Award className="h-5 w-5" />
-                      </div>
-                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">Questions in Library</p>
-                    </div>
-                    <p className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50">
-                      {listLoading ? "—" : totalQuestionBank}
-                    </p>
-                  </div>
-                </div>
-                <div className="group relative overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-xl dark:border-zinc-800/80 dark:bg-zinc-900/50">
-                  <div className="absolute right-0 top-0 -mt-8 -mr-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                  <div className="relative">
-                    <div className="mb-4 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                        <RefreshCw className={`h-5 w-5 ${listLoading ? 'animate-spin' : ''}`} />
-                      </div>
-                      <p className="text-sm font-semibold tracking-wide text-zinc-600 dark:text-zinc-400">API Connection</p>
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                        {listError ? (
-                          <span className="inline-flex items-center gap-2 text-red-600 dark:text-red-400">
-                            <span className="relative flex h-3 w-3"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span> Disconnected
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                            <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span></span> Active
-                          </span>
-                        )}
-                      </p>
-                      <p className="mt-2 truncate font-mono text-xs text-zinc-400 dark:text-zinc-500" title={apiUrl}>{apiUrl}</p>
-                    </div>
+                <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Recent Activity</h3>
+                  <div className="mt-4 space-y-2">
+                    {recentAttempts.length === 0 ? (
+                      <p className="text-sm text-zinc-500">No attempts yet.</p>
+                    ) : (
+                      recentAttempts.map((a) => (
+                        <div key={a.attempt_id} className="rounded-lg border border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
+                          <p className="font-semibold text-zinc-800 dark:text-zinc-200">
+                            {a.candidate_name} · {a.exam_title ?? a.exam_topics[0]}
+                          </p>
+                          <p className="mt-0.5 text-zinc-500">
+                            {a.exam_department_name} · {a.score_percent.toFixed(0)}% · {formatDate(a.created_at)}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
+
+              <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-4 text-xs text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                Backend: <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">{apiUrl}</code> · {listError ? "Disconnected" : "Connected"}
+              </div>
+                  </>
+                );
+              })()}
             </section>
             )}
 
