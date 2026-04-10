@@ -3,6 +3,7 @@ import type {
   AdminGenerateResponse,
   AttemptDetailResponse,
   CandidatePublic,
+  ExamDetailResponse,
   ExamQuestionsResponse,
   ExamSummary,
   ExamTopicMix,
@@ -212,6 +213,18 @@ export async function getAttemptDetail(attemptId: number): Promise<AttemptDetail
   });
   if (!res.ok) throw new Error(await parseError(res));
   return res.json() as Promise<AttemptDetailResponse>;
+}
+
+export async function getExamDetailAdmin(examId: number): Promise<ExamDetailResponse> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${base()}/api/v1/admin/exams/${examId}`, {
+    cache: "no-store",
+    headers,
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json() as Promise<ExamDetailResponse>;
 }
 
 export async function listQuestions(page: number = 1, pageSize: number = 10): Promise<PaginatedQuestionsResponse> {

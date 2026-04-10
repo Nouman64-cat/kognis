@@ -9,6 +9,8 @@ from app.models import CandidateAnswer, Exam, ExamAttempt, Question
 from app.schemas import (
     AdminGenerateExamRequest,
     AdminGenerateExamResponse,
+    ExamDetailResponse,
+    ExamQuestionDetail,
     AttemptDetailResponse,
     AttemptQuestionDetail,
     AttemptRow,
@@ -175,6 +177,60 @@ async def list_attempts(
         attempts=attempts,
         global_stats=global_stats,
         candidate_stats=candidate_stats,
+    )
+
+
+@router.get(
+    "/exams/{exam_id}",
+    response_model=ExamDetailResponse,
+)
+async def get_exam_detail(
+    exam_id: int,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> ExamDetailResponse:
+    result = await session.execute(
+        select(Exam)
+        .where(Exam.id == exam_id)
+        .options(selectinload(Exam.questions))
+    )
+    exam = result.scalar_one_or_none()
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exam {exam_id} not found.",
+        )
+
+    questions: list[ExamQuestionDetail] = []
+    for q in sorted(exam.questions or [], key=lambda x: x.id or 0):
+        if q.id is None:
+            continue
+        options = list(q.options) if q.options else []
+        correct_idx = q.correct_answer
+        correct_text = options[correct_idx] if 0 <= correct_idx < len(options) else "Unknown"
+        questions.append(
+            ExamQuestionDetail(
+                question_id=q.id,
+                text=q.text,
+                options=options,
+                correct_option_index=correct_idx,
+                correct_option_text=correct_text,
+                explanation=q.explanation,
+                category=q.category,
+            )
+        )
+
+    topics = exam.topics if exam.topics else [exam.topic]
+    return ExamDetailResponse(
+        exam_id=exam.id,
+        exam_title=exam.title,
+        exam_topics=topics,
+        exam_complexity=exam.complexity,
+        total_questions=exam.total_questions,
+        duration_minutes=exam.duration_minutes,
+        scheduled_for=exam.scheduled_for,
+        created_at=exam.created_at,
+        questions=questions,
     )
 
 

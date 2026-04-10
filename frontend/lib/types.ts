@@ -137,6 +137,28 @@ export type AttemptDetailResponse = {
   questions: AttemptQuestionDetail[];
 };
 
+export type ExamQuestionDetail = {
+  question_id: number;
+  text: string;
+  options: string[];
+  correct_option_index: number;
+  correct_option_text: string;
+  explanation: string | null;
+  category: string | null;
+};
+
+export type ExamDetailResponse = {
+  exam_id: number;
+  exam_title: string | null;
+  exam_topics: string[];
+  exam_complexity: string;
+  total_questions: number;
+  duration_minutes: number | null;
+  scheduled_for: string | null;
+  created_at: string;
+  questions: ExamQuestionDetail[];
+};
+
 export type QuestionAdminView = {
   id: number;
   exam_id: number;

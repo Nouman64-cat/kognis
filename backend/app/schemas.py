@@ -223,6 +223,28 @@ class AttemptDetailResponse(BaseModel):
     questions: list[AttemptQuestionDetail]
 
 
+class ExamQuestionDetail(BaseModel):
+    question_id: int
+    text: str
+    options: list[str]
+    correct_option_index: int
+    correct_option_text: str
+    explanation: str | None
+    category: str | None
+
+
+class ExamDetailResponse(BaseModel):
+    exam_id: int
+    exam_title: str | None
+    exam_topics: list[str]
+    exam_complexity: str
+    total_questions: int
+    duration_minutes: int | None
+    scheduled_for: datetime | None
+    created_at: datetime
+    questions: list[ExamQuestionDetail]
+
+
 class QuestionAdminView(BaseModel):
     id: int
     exam_id: int
