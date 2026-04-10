@@ -245,3 +245,16 @@ export async function deleteAttempt(attemptId: number): Promise<void> {
 
   if (!res.ok) throw new Error(await parseError(res));
 }
+
+export async function deleteExamAdmin(examId: number): Promise<void> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${base()}/api/v1/admin/exams/${examId}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+}

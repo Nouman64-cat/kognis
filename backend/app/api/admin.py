@@ -325,6 +325,27 @@ async def list_questions(
 
 
 @router.delete(
+    "/exams/{exam_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_exam(
+    exam_id: int,
+    _: None = Depends(verify_admin),
+    session: AsyncSession = Depends(db_session),
+) -> None:
+    """Delete an exam from the library (cascades to questions/attempts/answers)."""
+    result = await session.execute(select(Exam).where(Exam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Exam {exam_id} not found.",
+        )
+    await session.delete(exam)
+    await session.commit()
+
+
+@router.delete(
     "/attempts/{attempt_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )

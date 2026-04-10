@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Sparkles,
   Target,
+  Trash2,
   TrendingUp,
   Trophy,
   Users,
@@ -29,7 +30,15 @@ import {
   Zap,
 } from "lucide-react";
 import { clearAdminToken } from "@/lib/admin-token";
-import { generateExamAdmin, getAttemptDetail, listAttempts, listExams, listQuestions, deleteAttempt } from "@/lib/api";
+import {
+  generateExamAdmin,
+  getAttemptDetail,
+  listAttempts,
+  listExams,
+  listQuestions,
+  deleteAttempt,
+  deleteExamAdmin,
+} from "@/lib/api";
 import { candidateExamInviteUrl } from "@/lib/invite-link";
 import type {
   AttemptDetailResponse,
@@ -108,6 +117,7 @@ export default function AdminPage() {
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [copiedExamId, setCopiedExamId] = useState<number | null>(null);
+  const [deletingExamId, setDeletingExamId] = useState<number | null>(null);
   const [success, setSuccess] = useState<{
     exam_id: number;
     title: string | null;
@@ -165,6 +175,24 @@ export default function AdminPage() {
       setListLoading(false);
     }
   }, []);
+
+  const handleDeleteExam = useCallback(
+    async (examId: number) => {
+      const ok = window.confirm("Delete this exam? This also removes related attempts and answers.");
+      if (!ok) return;
+      setDeletingExamId(examId);
+      setListError(null);
+      try {
+        await deleteExamAdmin(examId);
+        setExams((prev) => prev.filter((e) => e.id !== examId));
+      } catch (e) {
+        setListError(e instanceof Error ? e.message : "Could not delete exam");
+      } finally {
+        setDeletingExamId(null);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadExams();
@@ -882,6 +910,7 @@ export default function AdminPage() {
                             Scheduled / Created
                           </th>
                           <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Invite</th>
+                          <th className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -890,7 +919,14 @@ export default function AdminPage() {
                           return (
                             <tr key={exam.id} className="bg-white dark:bg-zinc-900">
                               <td className="max-w-[200px] px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
-                                <span className="line-clamp-2">{exam.title ?? exam.topics.join(", ")}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(candidateExamInviteUrl(exam.id), "_blank", "noopener,noreferrer")}
+                                  className="line-clamp-2 text-left underline-offset-2 hover:underline"
+                                  title="Open exam"
+                                >
+                                  {exam.title ?? exam.topics.join(", ")}
+                                </button>
                               </td>
                               <td className="hidden px-4 py-3 capitalize text-zinc-600 sm:table-cell dark:text-zinc-400">
                                 {exam.complexity}
@@ -929,6 +965,27 @@ export default function AdminPage() {
                                     className="shrink-0 rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-zinc-700"
                                   >
                                     {copiedExamId === exam.id ? "Copied" : "Copy"}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => window.open(candidateExamInviteUrl(exam.id), "_blank", "noopener,noreferrer")}
+                                    className="inline-flex items-center gap-1 rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    View
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteExam(exam.id)}
+                                    disabled={deletingExamId === exam.id}
+                                    className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    {deletingExamId === exam.id ? "Deleting..." : "Delete"}
                                   </button>
                                 </div>
                               </td>
