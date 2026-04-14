@@ -154,7 +154,14 @@ async def get_exam_questions(
             topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
         )
         questions_out = [
-            QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in q_rows if q.id is not None
+            QuestionPublic(
+                id=q.id,
+                text=q.text,
+                options=list(q.options),
+                required_selection_count=len(sorted(set(q.correct_answers or [q.correct_answer]))),
+            )
+            for q in q_rows
+            if q.id is not None
         ]
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -190,6 +197,12 @@ async def get_exam_questions(
             topic_mix=parse_topic_mix_from_storage(exam.topic_mix),
         ),
         questions=[
-            QuestionPublic(id=q.id, text=q.text, options=list(q.options)) for q in questions
+            QuestionPublic(
+                id=q.id,
+                text=q.text,
+                options=list(q.options),
+                required_selection_count=len(sorted(set(q.correct_answers or [q.correct_answer]))),
+            )
+            for q in questions
         ],
     )

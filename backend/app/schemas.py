@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 class AdminLoginRequest(BaseModel):
@@ -128,12 +128,13 @@ class QuestionPublic(BaseModel):
     id: int
     text: str
     options: list[str]
+    required_selection_count: int = Field(ge=1)
 
     @field_validator("options")
     @classmethod
-    def four_options(cls, v: list[str]) -> list[str]:
-        if len(v) != 4:
-            raise ValueError("each question must have exactly four options")
+    def valid_option_count(cls, v: list[str]) -> list[str]:
+        if len(v) < 2:
+            raise ValueError("each question must have at least two options")
         return v
 
 
@@ -144,7 +145,17 @@ class ExamQuestionsResponse(BaseModel):
 
 class AnswerItem(BaseModel):
     question_id: int = Field(gt=0)
-    chosen_option_index: int = Field(ge=-1, le=3, description="-1 means unanswered")
+    chosen_option_indices: list[int] = Field(default_factory=list, description="Empty list means unanswered")
+    chosen_option_index: int | None = Field(default=None, ge=-1, description="Legacy single-choice field")
+
+    @model_validator(mode="after")
+    def normalize_legacy_single_choice(self) -> "AnswerItem":
+        if self.chosen_option_indices:
+            return self
+        if self.chosen_option_index is None or self.chosen_option_index == -1:
+            return self
+        self.chosen_option_indices = [self.chosen_option_index]
+        return self
 
 
 class SubmitExamRequest(BaseModel):
@@ -154,10 +165,10 @@ class SubmitExamRequest(BaseModel):
 
 class PerQuestionResult(BaseModel):
     question_id: int
-    chosen_option_index: int = Field(description="-1 means unanswered")
-    chosen_option_text: str
-    correct_option_index: int
-    correct_option_text: str
+    chosen_option_indices: list[int]
+    chosen_option_texts: list[str]
+    correct_option_indices: list[int]
+    correct_option_texts: list[str]
     is_correct: bool
     explanation: str | None
 
@@ -224,10 +235,10 @@ class AttemptQuestionDetail(BaseModel):
     question_id: int
     text: str
     options: list[str]
-    correct_option_index: int
-    chosen_option_index: int
-    chosen_option_text: str
-    correct_option_text: str
+    correct_option_indices: list[int]
+    chosen_option_indices: list[int]
+    chosen_option_texts: list[str]
+    correct_option_texts: list[str]
     is_correct: bool
     explanation: str | None
 
@@ -252,8 +263,8 @@ class ExamQuestionDetail(BaseModel):
     question_id: int
     text: str
     options: list[str]
-    correct_option_index: int
-    correct_option_text: str
+    correct_option_indices: list[int]
+    correct_option_texts: list[str]
     explanation: str | None
     category: str | None
 
@@ -277,7 +288,8 @@ class QuestionAdminView(BaseModel):
     exam_id: int
     text: str
     options: list[str]
-    correct_answer: int
+    correct_answers: list[int]
+    required_selection_count: int = Field(ge=1)
     explanation: str | None
     category: str | None
     exam_topic: str

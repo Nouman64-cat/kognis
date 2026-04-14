@@ -43,7 +43,7 @@ async def submit_exam(
     questions = q_res.scalars().all()
     by_id = {q.id: q for q in questions if q.id is not None}
     expected_ids = set(by_id.keys())
-    submitted = {a.question_id: a.chosen_option_index for a in body.answers}
+    submitted = {a.question_id: sorted(set(a.chosen_option_indices)) for a in body.answers}
     if set(submitted.keys()) != expected_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -65,26 +65,49 @@ async def submit_exam(
     session.add(attempt)
     await session.flush()
 
-    for qid, chosen in submitted.items():
+    for qid, chosen_indices in submitted.items():
         q = by_id[qid]
-        is_ok = chosen == q.correct_answer
+        if any(idx < 0 or idx >= len(q.options) for idx in chosen_indices):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid option index submitted for question {qid}.",
+            )
+        correct_indices = (
+            sorted(set(q.correct_answers))
+            if q.correct_answers
+            else [q.correct_answer]
+        )
+        required_selection_count = len(correct_indices)
+        if len(chosen_indices) > required_selection_count:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Question {qid} allows selecting at most {required_selection_count} option(s). "
+                    "Deselect extra options and submit again."
+                ),
+            )
+        is_ok = chosen_indices == correct_indices
         if is_ok:
             correct += 1
+        chosen_for_legacy = chosen_indices[0] if chosen_indices else -1
         session.add(
             CandidateAnswer(
                 exam_attempt_id=attempt.id,
                 question_id=qid,
-                chosen_option=chosen,
+                chosen_option=chosen_for_legacy,
+                chosen_options=chosen_indices,
                 is_correct=is_ok,
             )
         )
+        chosen_texts = [q.options[idx] for idx in chosen_indices if 0 <= idx < len(q.options)]
+        correct_texts = [q.options[idx] for idx in correct_indices if 0 <= idx < len(q.options)]
         results.append(
             PerQuestionResult(
                 question_id=qid,
-                chosen_option_index=chosen,
-                chosen_option_text=q.options[chosen] if 0 <= chosen < len(q.options) else "Not answered",
-                correct_option_index=q.correct_answer,
-                correct_option_text=q.options[q.correct_answer] if 0 <= q.correct_answer < len(q.options) else "Unknown",
+                chosen_option_indices=chosen_indices,
+                chosen_option_texts=chosen_texts,
+                correct_option_indices=correct_indices,
+                correct_option_texts=correct_texts,
                 is_correct=is_ok,
                 explanation=q.explanation,
             )

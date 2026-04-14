@@ -14,9 +14,50 @@ import {
 } from "@/lib/api";
 import type { Department, ExamQuestionsResponse, ExamSummary, QuestionPublic, SubmitExamResponse } from "@/lib/types";
 
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6D2B79F5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleWithRng<T>(arr: T[], rng: () => number): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function shuffleBundle(
+  bundle: ExamQuestionsResponse,
+  seed: number,
+): { shuffled: ExamQuestionsResponse; optionOrders: Record<number, number[]> } {
+  const rng = mulberry32(seed);
+  const optionOrders: Record<number, number[]> = {};
+  const shuffledQuestions = shuffleWithRng(bundle.questions, rng).map((q) => {
+    const pairs = q.options.map((opt, originalIdx) => ({ opt, originalIdx }));
+    const shuffledPairs = shuffleWithRng(pairs, rng);
+    optionOrders[q.id] = shuffledPairs.map((p) => p.originalIdx);
+    return {
+      ...q,
+      options: shuffledPairs.map((p) => p.opt),
+    };
+  });
+  return {
+    shuffled: { ...bundle, questions: shuffledQuestions },
+    optionOrders,
+  };
+}
+
 function ResultsReview({
   result,
   bundle,
+  optionOrders,
   reviewQIdx,
   setReviewQIdx,
   inviteMode,
@@ -26,6 +67,7 @@ function ResultsReview({
 }: {
   result: SubmitExamResponse;
   bundle: ExamQuestionsResponse | null;
+  optionOrders: Record<number, number[]>;
   reviewQIdx: number;
   setReviewQIdx: React.Dispatch<React.SetStateAction<number>>;
   inviteMode: boolean;
@@ -154,8 +196,9 @@ function ResultsReview({
                   <div className="space-y-2">
                     {q.options.map((opt, idx) => {
                       const letter = String.fromCharCode(65 + idx);
-                      const isCorrectOpt = idx === r.correct_option_index;
-                      const isChosen = idx === r.chosen_option_index;
+                      const originalIdx = optionOrders[q.id]?.[idx] ?? idx;
+                      const isCorrectOpt = r.correct_option_indices.includes(originalIdx);
+                      const isChosen = r.chosen_option_indices.includes(originalIdx);
                       
                       const borderCorrect = "border-emerald-500 bg-emerald-50/80 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/35";
                       const borderWrongChosen = "border-red-500 bg-red-50/80 shadow-sm dark:border-red-500 dark:bg-red-950/30";
@@ -210,7 +253,7 @@ function ResultsReview({
                   <div className="rounded-xl border border-dashed border-zinc-200 p-4 dark:border-zinc-800">
                     <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Your answer</p>
                     <div className="mt-2 text-sm text-zinc-500 italic">
-                      {r.chosen_option_index === -1 ? "Not answered" : r.chosen_option_text}
+                      {r.chosen_option_texts.length === 0 ? "Not answered" : r.chosen_option_texts.join(", ")}
                     </div>
                   </div>
                   {!r.is_correct && (
@@ -218,7 +261,7 @@ function ResultsReview({
                       <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-500">
                         Correct answer
                       </p>
-                      <MarkdownBlock content={r.correct_option_text} className="prose-sm mt-2" />
+                      <MarkdownBlock content={r.correct_option_texts.join(", ")} className="prose-sm mt-2" />
                     </div>
                   )}
                 </>
@@ -288,8 +331,9 @@ type ExamSessionSnapshotV1 = {
   examId: number;
   email: string;
   fullName: string;
-  choices: Record<number, number>;
+  choices: Record<number, number[]>;
   currentQIdx: number;
+  shuffleSeed: number;
   /** Epoch ms when the timed exam reaches zero (used to restore remaining time after refresh). */
   timerDeadline: number | null;
 };
@@ -302,11 +346,13 @@ function clearExamSession() {
   }
 }
 
-function parseChoices(raw: unknown): Record<number, number> {
-  const out: Record<number, number> = {};
+function parseChoices(raw: unknown): Record<number, number[]> {
+  const out: Record<number, number[]> = {};
   if (!raw || typeof raw !== "object") return out;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "number" && Number.isFinite(v)) out[Number(k)] = v;
+    if (Array.isArray(v)) {
+      out[Number(k)] = v.filter((x): x is number => typeof x === "number" && Number.isFinite(x));
+    }
   }
   return out;
 }
@@ -371,7 +417,7 @@ function ExamQuestionNav({
   variant,
 }: {
   questions: QuestionPublic[];
-  choices: Record<number, number>;
+  choices: Record<number, number[]>;
   currentQIdx: number;
   onSelect: (index: number) => void;
   variant: "sidebar" | "strip";
@@ -386,7 +432,7 @@ function ExamQuestionNav({
   const sizeClass = variant === "sidebar" ? "h-8 w-8" : "h-7 w-7 shrink-0";
 
   const buttons = questions.map((q, i) => {
-    const isAnswered = choices[q.id] !== undefined;
+    const isAnswered = (choices[q.id] ?? []).length > 0;
     const isCurrent = i === currentQIdx;
     return (
       <button
@@ -475,12 +521,14 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [selectedExam, setSelectedExam] = useState<ExamSummary | null>(null);
   const [bundle, setBundle] = useState<ExamQuestionsResponse | null>(null);
-  const [choices, setChoices] = useState<Record<number, number>>({});
+  const [optionOrders, setOptionOrders] = useState<Record<number, number[]>>({});
+  const [choices, setChoices] = useState<Record<number, number[]>>({});
   const [result, setResult] = useState<SubmitExamResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [sessionRestoring, setSessionRestoring] = useState(false);
+  const [shuffleSeed, setShuffleSeed] = useState<number>(() => Math.floor(Math.random() * 2_000_000_000));
 
   // Current question index for one-at-a-time navigation
   const [currentQIdx, setCurrentQIdx] = useState(0);
@@ -496,7 +544,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const takeExamRef = useRef<{
     step: Step;
     bundle: ExamQuestionsResponse | null;
-    choices: Record<number, number>;
+    choices: Record<number, number[]>;
     email: string;
   }>({
     step: "register",
@@ -614,7 +662,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   const applyAlreadySubmitted = useCallback((e: AlreadySubmittedError) => {
     clearExamSession();
     setResult(e.result);
-    setBundle(e.bundle);
+    const seed = Math.floor(Math.random() * 2_000_000_000);
+    const shuffled = shuffleBundle(e.bundle, seed);
+    setBundle(shuffled.shuffled);
+    setOptionOrders(shuffled.optionOrders);
+    setShuffleSeed(seed);
     setSelectedExam(e.bundle.exam);
     setReviewQIdx(0);
     setResultsPrefaceNotice(
@@ -628,8 +680,12 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     setLoading(true); setError(null);
     try {
       const data = await getExamQuestions(examId, emailVal.trim().toLowerCase());
+      const seed = Math.floor(Math.random() * 2_000_000_000);
+      const shuffled = shuffleBundle(data, seed);
       setResultsPrefaceNotice(null);
-      setBundle(data);
+      setBundle(shuffled.shuffled);
+      setOptionOrders(shuffled.optionOrders);
+      setShuffleSeed(seed);
       setSelectedExam(data.exam);
       
       const isFuture = data.exam.scheduled_for && new Date(data.exam.scheduled_for).getTime() > Date.now();
@@ -693,8 +749,10 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         }
         if (cancelled) return;
 
+        const seed = typeof snap.shuffleSeed === "number" ? snap.shuffleSeed : Math.floor(Math.random() * 2_000_000_000);
+        const shuffled = shuffleBundle(data, seed);
         const choicesParsed = parseChoices(snap.choices);
-        const maxIdx = Math.max(0, data.questions.length - 1);
+        const maxIdx = Math.max(0, shuffled.shuffled.questions.length - 1);
         const qIdx = Math.min(Math.max(0, snap.currentQIdx ?? 0), maxIdx);
 
         setEmail(emailNorm);
@@ -704,7 +762,9 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
           /* ignore */
         }
         setFullName(typeof snap.fullName === "string" ? snap.fullName : "");
-        setBundle(data);
+        setBundle(shuffled.shuffled);
+        setOptionOrders(shuffled.optionOrders);
+        setShuffleSeed(seed);
         setSelectedExam(data.exam);
         setChoices(choicesParsed);
         setCurrentQIdx(qIdx);
@@ -718,11 +778,11 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
             setLoading(true);
             setError(null);
             try {
-              const answers = data.questions.map((q) => ({
+              const answers = shuffled.shuffled.questions.map((q) => ({
                 question_id: q.id,
-                chosen_option_index: choicesParsed[q.id] ?? -1,
+                chosen_option_indices: choicesParsed[q.id] ?? [],
               }));
-              const res = await submitExam(data.exam.id, emailNorm, answers);
+              const res = await submitExam(shuffled.shuffled.exam.id, emailNorm, answers);
               if (cancelled) return;
               clearExamSession();
               setResult(res);
@@ -777,6 +837,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       fullName,
       choices,
       currentQIdx,
+      shuffleSeed,
       timerDeadline: deadline,
     };
     try {
@@ -784,7 +845,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
     } catch {
       /* quota / private mode */
     }
-  }, [sessionRestoring, step, bundle, choices, currentQIdx, timeLeft, email, fullName]);
+  }, [sessionRestoring, step, bundle, choices, currentQIdx, shuffleSeed, timeLeft, email, fullName]);
 
   // ─── Anti-cheat: switch away from tab (delayed so F5 refresh can cancel timer) ─
   useEffect(() => {
@@ -847,7 +908,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
       leaveSubmitSentRef.current = true;
       const answers = snap.bundle.questions.map((q) => ({
         question_id: q.id,
-        chosen_option_index: snap.choices[q.id] ?? -1,
+        chosen_option_indices: snap.choices[q.id] ?? [],
       }));
       submitExamKeepalive(snap.bundle.exam.id, snap.email, answers);
       clearExamSession();
@@ -862,13 +923,13 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
   }, [step]);
 
   // ─── Submit ───────────────────────────────────────────────────────────────
-  const doSubmit = useCallback(async (currentChoices: Record<number, number>, currentBundle: ExamQuestionsResponse) => {
+  const doSubmit = useCallback(async (currentChoices: Record<number, number[]>, currentBundle: ExamQuestionsResponse) => {
     leaveSubmitSentRef.current = true;
     stopTimer(); setLoading(true); setError(null);
     try {
       const answers = currentBundle.questions.map((q) => ({
         question_id: q.id,
-        chosen_option_index: currentChoices[q.id] ?? -1,
+        chosen_option_indices: currentChoices[q.id] ?? [],
       }));
       const res = await submitExam(currentBundle.exam.id, email.trim().toLowerCase(), answers);
       clearExamSession();
@@ -908,7 +969,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
   const requestSubmitExam = useCallback(() => {
     if (!bundle) return;
-    const unanswered = bundle.questions.filter((q) => choices[q.id] === undefined);
+    const unanswered = bundle.questions.filter((q) => (choices[q.id] ?? []).length === 0);
     if (unanswered.length > 0) {
       setSubmitModalOpen(true);
     } else {
@@ -940,7 +1001,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
   // ─── Derived exam progress ─────────────────────────────────────────────────
   const totalQ = bundle?.questions.length ?? 0;
-  const answeredCount = Object.keys(choices).length;
+  const answeredCount = Object.values(choices).filter((v) => v.length > 0).length;
   const progressPct = totalQ > 0 ? Math.round((answeredCount / totalQ) * 100) : 0;
   const currentQ = bundle?.questions[currentQIdx];
 
@@ -1080,7 +1141,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                   </span>
                   <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                     Question {currentQIdx + 1} of {totalQ}
-                    {choices[currentQ.id] !== undefined
+                    {(choices[currentQ.id] ?? []).length > 0
                       ? <span className="ml-2 text-emerald-600 dark:text-emerald-400">✓ Answered</span>
                       : <span className="ml-2 text-zinc-400">Not answered yet</span>
                     }
@@ -1094,9 +1155,14 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
 
                 {/* Options */}
                 <div className="space-y-2 px-6 pb-6">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                    Select exactly {currentQ.required_selection_count} option{currentQ.required_selection_count > 1 ? "s" : ""}
+                  </p>
                   {currentQ.options.map((opt, idx) => {
-                    const isSelected = choices[currentQ.id] === idx;
-                    const letter = String.fromCharCode(65 + idx); // A, B, C, D
+                    const selectedSet = new Set(choices[currentQ.id] ?? []);
+                    const originalIdx = optionOrders[currentQ.id]?.[idx] ?? idx;
+                    const isSelected = selectedSet.has(originalIdx);
+                    const isMultiSelect = currentQ.required_selection_count > 1;
                     return (
                       <label
                         key={idx}
@@ -1106,20 +1172,32 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
                             : "border-zinc-200 bg-zinc-50/50 hover:border-zinc-300 hover:bg-zinc-100/70 dark:border-zinc-700 dark:bg-zinc-800/30 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
                           }`}
                       >
-                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm font-bold transition-colors
-                          ${isSelected
-                            ? "bg-emerald-600 text-white"
-                            : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
-                          }`}>
-                          {letter}
-                        </span>
                         <input
-                          type="radio"
+                          type={isMultiSelect ? "checkbox" : "radio"}
                           name={`q-${currentQ.id}`}
-                          className="sr-only"
+                          className={`mt-1 h-4 w-4 shrink-0 accent-emerald-600 ${isMultiSelect ? "" : "rounded-full"}`}
                           checked={isSelected}
                           onChange={() => {
-                            setChoices((c) => ({ ...c, [currentQ.id]: idx }));
+                            setChoices((c) => {
+                              const current = new Set(c[currentQ.id] ?? []);
+                              if (currentQ.required_selection_count === 1) {
+                                if (current.has(originalIdx)) current.delete(originalIdx);
+                                else {
+                                  current.clear();
+                                  current.add(originalIdx);
+                                }
+                              } else if (current.has(originalIdx)) current.delete(originalIdx);
+                              else if (current.size < currentQ.required_selection_count) current.add(originalIdx);
+                              else {
+                                setError(
+                                  `You can select only ${currentQ.required_selection_count} option(s) for this question.`,
+                                );
+                              }
+                              return { ...c, [currentQ.id]: Array.from(current).sort((a, b) => a - b) };
+                            });
+                            if (!selectedSet.has(optionOrders[currentQ.id]?.[idx] ?? idx) && selectedSet.size >= currentQ.required_selection_count) {
+                              return;
+                            }
                             setError(null);
                           }}
                         />
@@ -1234,6 +1312,7 @@ export function CandidateFlow({ presetExamId }: CandidateFlowProps) {
         <ResultsReview
           result={result}
           bundle={bundle}
+          optionOrders={optionOrders}
           reviewQIdx={reviewQIdx}
           setReviewQIdx={setReviewQIdx}
           inviteMode={inviteMode}

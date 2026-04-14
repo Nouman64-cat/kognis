@@ -33,29 +33,25 @@ async def build_submit_response_from_attempt(
             continue
         ca = by_question.get(q.id)
         if ca is None:
-            chosen = -1
+            chosen_indices: list[int] = []
             is_ok = False
-            chosen_text = "Not answered"
+            chosen_texts: list[str] = []
         else:
-            chosen = ca.chosen_option
+            chosen_indices = sorted(set(ca.chosen_options or ([ca.chosen_option] if ca.chosen_option >= 0 else [])))
             is_ok = ca.is_correct
             opts = list(q.options)
-            chosen_text = (
-                opts[chosen]
-                if 0 <= chosen < len(opts)
-                else "Not answered"
-            )
+            chosen_texts = [opts[idx] for idx in chosen_indices if 0 <= idx < len(opts)]
         if is_ok:
             correct += 1
-        co = q.correct_answer
+        correct_indices = sorted(set(q.correct_answers or [q.correct_answer]))
         opts = list(q.options)
         results.append(
             PerQuestionResult(
                 question_id=q.id,
-                chosen_option_index=chosen,
-                chosen_option_text=chosen_text,
-                correct_option_index=co,
-                correct_option_text=opts[co] if 0 <= co < len(opts) else "Unknown",
+                chosen_option_indices=chosen_indices,
+                chosen_option_texts=chosen_texts,
+                correct_option_indices=correct_indices,
+                correct_option_texts=[opts[idx] for idx in correct_indices if 0 <= idx < len(opts)],
                 is_correct=is_ok,
                 explanation=q.explanation,
             )

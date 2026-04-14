@@ -146,7 +146,7 @@ export async function getExamQuestions(
 export async function submitExam(
   examId: number,
   email: string,
-  answers: { question_id: number; chosen_option_index: number }[],
+  answers: { question_id: number; chosen_option_indices: number[] }[],
 ): Promise<SubmitExamResponse> {
   const res = await fetch(`${base()}/api/v1/exams/${examId}/submit`, {
     method: "POST",
@@ -164,7 +164,7 @@ export async function submitExam(
 export function submitExamKeepalive(
   examId: number,
   email: string,
-  answers: { question_id: number; chosen_option_index: number }[],
+  answers: { question_id: number; chosen_option_indices: number[] }[],
 ): void {
   try {
     void fetch(`${base()}/api/v1/exams/${examId}/submit`, {

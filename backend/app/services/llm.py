@@ -31,10 +31,10 @@ class _LLMQuestion(BaseModel):
     )
     options: list[str] = Field(
         min_length=4,
-        max_length=4,
-        description="Four options; use ``` fences for any option that contains code.",
+        max_length=8,
+        description="Provide 4-8 options; use ``` fences for any option that contains code.",
     )
-    correct_index: int = Field(ge=0, le=3)
+    correct_indices: list[int] = Field(min_length=1, max_length=8)
     explanation: str = Field(min_length=1, max_length=1024, description="Short reason explaining why the correct answer is right.")
     category: str = Field(
         min_length=1,
@@ -49,6 +49,17 @@ class _LLMQuestion(BaseModel):
             if not o.strip():
                 raise ValueError("options must be non-empty strings")
         return v
+
+    @field_validator("correct_indices")
+    @classmethod
+    def valid_correct_indices(cls, v: list[int], info) -> list[int]:
+        opts = info.data.get("options", [])
+        out = sorted(set(v))
+        if any(i < 0 for i in out):
+            raise ValueError("correct_indices must be non-negative")
+        if opts and any(i >= len(opts) for i in out):
+            raise ValueError("correct_indices must reference valid option indices")
+        return out
 
 
 class _LLMExamPayload(BaseModel):
@@ -116,13 +127,22 @@ def _build_user_prompt(
 
     mix_section = "\n".join(mix_lines) if mix_lines else "(No category breakdown — use general mix.)"
 
+    single_target = max(1, total_questions // 2)
+    multi_target = total_questions - single_target
+    if multi_target == 0 and total_questions > 1:
+        multi_target = 1
+        single_target = total_questions - 1
+
     return (
         prefix
         + f"Generate exactly {total_questions} distinct multiple-choice questions {topic_clause}. "
         f"Target difficulty/complexity: {complexity!r}. "
-        "Each question must have exactly four options as plain strings, one correct answer identified by "
-        "correct_index 0-3 matching the position in options, a concise 1-sentence explanation, "
+        "Each question must have between 4 and 8 options as plain strings, and one or more correct answers identified by "
+        "correct_indices (an array of option positions), a concise 1-sentence explanation, "
         "and a category field set EXACTLY as specified below (copy the category string character-for-character). "
+        "Answer-type mix is mandatory: "
+        f"exactly {single_target} question(s) must have ONE correct option (single-select), and exactly {multi_target} question(s) "
+        "must have TWO OR MORE correct options (multi-select). "
         "Do not include numbering prefixes in the question text. "
         "QUESTION MIX (mandatory counts per category — your output must satisfy these exactly):\n"
         f"{mix_section}\n"
@@ -151,6 +171,30 @@ def _validate_category_counts(payload: _LLMExamPayload, expected: dict[str, int]
     for key, got in c.items():
         if key not in expected:
             raise RuntimeError(f"Unexpected category {key!r} (not in the requested mix)")
+
+
+def _validate_answer_type_mix(payload: _LLMExamPayload, total_questions: int) -> None:
+    single_target = max(1, total_questions // 2)
+    multi_target = total_questions - single_target
+    if multi_target == 0 and total_questions > 1:
+        multi_target = 1
+        single_target = total_questions - 1
+    single_count = sum(1 for q in payload.questions if len(q.correct_indices) == 1)
+    multi_count = sum(1 for q in payload.questions if len(q.correct_indices) >= 2)
+    # Keep a real mix while allowing slight variance from target on odd totals.
+    # Example for 5 questions: both 3/2 and 2/3 are acceptable.
+    if single_count == 0 or multi_count == 0:
+        raise RuntimeError(
+            "Expected a mix of single-select and multi-select questions, got only one type"
+        )
+    if abs(single_count - single_target) > 1:
+        raise RuntimeError(
+            f"Expected {single_target} single-select questions, got {single_count}"
+        )
+    if abs(multi_count - multi_target) > 1:
+        raise RuntimeError(
+            f"Expected {multi_target} multi-select questions, got {multi_count}"
+        )
 
 
 async def _generate_mcq_payload_attempt(
@@ -198,10 +242,16 @@ async def _generate_mcq_payload_attempt(
                 raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
 
             _validate_category_counts(payload, expected_counts)
+            _validate_answer_type_mix(payload, total_questions)
             return payload
         except RuntimeError as e:
             last_err = str(e)
-            recoverable = "Expected" in last_err and ("questions" in last_err or "category" in last_err)
+            recoverable = "Expected" in last_err and (
+                "questions" in last_err
+                or "category" in last_err
+                or "single-select" in last_err
+                or "multi-select" in last_err
+            )
             if not recoverable:
                 raise
             if attempt >= _MAX_GENERATION_ATTEMPTS - 1:
@@ -384,16 +434,21 @@ def _anthropic_tool_def(allowed_categories: list[str], total_questions: int) -> 
                                     "description": "Use ``` fences when the option contains code.",
                                 },
                                 "minItems": 4,
-                                "maxItems": 4,
+                                "maxItems": 8,
                             },
-                            "correct_index": {"type": "integer", "minimum": 0, "maximum": 3},
+                            "correct_indices": {
+                                "type": "array",
+                                "items": {"type": "integer", "minimum": 0},
+                                "minItems": 1,
+                                "maxItems": 8,
+                            },
                             "explanation": {
                                 "type": "string",
                                 "description": "Short 1-sentence reason why the correct answer is correct",
                             },
                             "category": cat_enum,
                         },
-                        "required": ["text", "options", "correct_index", "explanation", "category"],
+                        "required": ["text", "options", "correct_indices", "explanation", "category"],
                     },
                 }
             },

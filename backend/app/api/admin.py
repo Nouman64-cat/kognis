@@ -80,7 +80,8 @@ async def generate_exam(
                 exam_id=exam.id,
                 text=q.text.strip(),
                 options=list(q.options),
-                correct_answer=q.correct_index,
+                correct_answer=q.correct_indices[0],
+                correct_answers=sorted(set(q.correct_indices)),
                 explanation=q.explanation,
                 category=q.category,
             )
@@ -278,15 +279,15 @@ async def get_exam_detail(
         if q.id is None:
             continue
         options = list(q.options) if q.options else []
-        correct_idx = q.correct_answer
-        correct_text = options[correct_idx] if 0 <= correct_idx < len(options) else "Unknown"
+        correct_indices = sorted(set(q.correct_answers or [q.correct_answer]))
+        correct_texts = [options[idx] for idx in correct_indices if 0 <= idx < len(options)]
         questions.append(
             ExamQuestionDetail(
                 question_id=q.id,
                 text=q.text,
                 options=options,
-                correct_option_index=correct_idx,
-                correct_option_text=correct_text,
+                correct_option_indices=correct_indices,
+                correct_option_texts=correct_texts,
                 explanation=q.explanation,
                 category=q.category,
             )
@@ -375,28 +376,20 @@ async def get_attempt_detail(
         q = ca.question
         if q is None or q.id is None:
             continue
-        chosen = ca.chosen_option
-        correct_idx = q.correct_answer
+        chosen_indices = sorted(set(ca.chosen_options or ([ca.chosen_option] if ca.chosen_option >= 0 else [])))
+        correct_indices = sorted(set(q.correct_answers or [q.correct_answer]))
         opts = list(q.options) if q.options else []
-        chosen_text = (
-            opts[chosen]
-            if 0 <= chosen < len(opts)
-            else "Not answered"
-        )
-        correct_text = (
-            opts[correct_idx]
-            if 0 <= correct_idx < len(opts)
-            else "Unknown"
-        )
+        chosen_texts = [opts[idx] for idx in chosen_indices if 0 <= idx < len(opts)]
+        correct_texts = [opts[idx] for idx in correct_indices if 0 <= idx < len(opts)]
         items.append(
             AttemptQuestionDetail(
                 question_id=q.id,
                 text=q.text,
                 options=opts,
-                correct_option_index=correct_idx,
-                chosen_option_index=chosen,
-                chosen_option_text=chosen_text,
-                correct_option_text=correct_text,
+                correct_option_indices=correct_indices,
+                chosen_option_indices=chosen_indices,
+                chosen_option_texts=chosen_texts,
+                correct_option_texts=correct_texts,
                 is_correct=ca.is_correct,
                 explanation=q.explanation,
             )
@@ -467,7 +460,8 @@ async def list_questions(
                 exam_id=q.exam_id,
                 text=q.text,
                 options=q.options,
-                correct_answer=q.correct_answer,
+                correct_answers=sorted(set(q.correct_answers or [q.correct_answer])),
+                required_selection_count=len(sorted(set(q.correct_answers or [q.correct_answer]))),
                 explanation=q.explanation,
                 category=q.category,
                 exam_topic=exam_topic,

@@ -35,6 +35,7 @@ export type QuestionPublic = {
   id: number;
   text: string;
   options: string[];
+  required_selection_count: number;
 };
 
 export type ExamQuestionsResponse = {
@@ -65,10 +66,10 @@ export type SubmitExamResponse = {
   total_questions: number;
   results: {
     question_id: number;
-    chosen_option_index: number; // -1 if unanswered
-    chosen_option_text: string;
-    correct_option_index: number;
-    correct_option_text: string;
+    chosen_option_indices: number[];
+    chosen_option_texts: string[];
+    correct_option_indices: number[];
+    correct_option_texts: string[];
     is_correct: boolean;
     explanation: string | null;
   }[];
@@ -128,10 +129,10 @@ export type AttemptQuestionDetail = {
   question_id: number;
   text: string;
   options: string[];
-  correct_option_index: number;
-  chosen_option_index: number;
-  chosen_option_text: string;
-  correct_option_text: string;
+  correct_option_indices: number[];
+  chosen_option_indices: number[];
+  chosen_option_texts: string[];
+  correct_option_texts: string[];
   is_correct: boolean;
   explanation: string | null;
 };
@@ -156,8 +157,8 @@ export type ExamQuestionDetail = {
   question_id: number;
   text: string;
   options: string[];
-  correct_option_index: number;
-  correct_option_text: string;
+  correct_option_indices: number[];
+  correct_option_texts: string[];
   explanation: string | null;
   category: string | null;
 };
@@ -181,7 +182,8 @@ export type QuestionAdminView = {
   exam_id: number;
   text: string;
   options: string[];
-  correct_answer: number;
+  correct_answers: number[];
+  required_selection_count: number;
   explanation: string | null;
   category: string | null;
   exam_topic: string;

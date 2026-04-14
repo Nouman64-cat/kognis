@@ -1378,12 +1378,12 @@ export default function AdminPage() {
                               <li
                                 key={i}
                                 className={`rounded-lg border px-4 py-3 text-sm ${
-                                  i === q.correct_answer
+                                  q.correct_answers.includes(i)
                                     ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-200"
                                     : "border-zinc-200 bg-zinc-50/50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/30 dark:text-zinc-300"
                                 }`}
                               >
-                                {i === q.correct_answer && (
+                                {q.correct_answers.includes(i) && (
                                   <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
                                     Correct Answer
                                   </span>
@@ -2036,8 +2036,8 @@ export default function AdminPage() {
                         <ul className="mt-4 space-y-2">
                           {q.options.map((opt, oi) => {
                             const letter = String.fromCharCode(65 + oi);
-                            const isCorrectOpt = oi === q.correct_option_index;
-                            const isChosen = oi === q.chosen_option_index;
+                            const isCorrectOpt = q.correct_option_indices.includes(oi);
+                            const isChosen = q.chosen_option_indices.includes(oi);
                             let row =
                               "border-zinc-200 bg-zinc-50/50 dark:border-zinc-700 dark:bg-zinc-800/30";
                             if (isCorrectOpt) {
@@ -2152,7 +2152,7 @@ export default function AdminPage() {
                             Question {qi + 1}
                           </span>
                           <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                            Answer: {String.fromCharCode(65 + q.correct_option_index)}
+                            Answer: {q.correct_option_indices.map((idx) => String.fromCharCode(65 + idx)).join(", ")}
                           </span>
                         </div>
                         <div className="mt-3">
@@ -2161,7 +2161,7 @@ export default function AdminPage() {
                         <ul className="mt-4 space-y-2">
                           {q.options.map((opt, oi) => {
                             const letter = String.fromCharCode(65 + oi);
-                            const isCorrectOpt = oi === q.correct_option_index;
+                            const isCorrectOpt = q.correct_option_indices.includes(oi);
                             return (
                               <li
                                 key={oi}

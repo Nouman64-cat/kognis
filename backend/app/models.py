@@ -84,7 +84,8 @@ class Question(SQLModel, table=True):
     exam_id: int = Field(foreign_key="exam.id", index=True)
     text: str = Field(max_length=8192)
     options: list[str] = Field(sa_column=Column(JSON, nullable=False))
-    correct_answer: int = Field(ge=0, le=3, description="Index 0-3 into options")
+    correct_answer: int = Field(ge=0, description="Legacy primary correct option index")
+    correct_answers: list[int] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     explanation: str | None = Field(default=None, max_length=1024)
     category: str | None = Field(default=None, max_length=128, description="User-defined mix bucket label")
 
@@ -119,7 +120,8 @@ class CandidateAnswer(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     exam_attempt_id: int = Field(foreign_key="exam_attempt.id", index=True)
     question_id: int = Field(foreign_key="question.id", index=True)
-    chosen_option: int = Field(ge=0, le=3)
+    chosen_option: int = Field(ge=-1)
+    chosen_options: list[int] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     is_correct: bool = Field(default=False)
 
     exam_attempt: ExamAttempt | None = Relationship(back_populates="candidate_answers")
